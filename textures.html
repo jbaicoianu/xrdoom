@@ -1,0 +1,21 @@
+<style>
+  .texture {
+    display: inline-block;
+    border: 1px solid black;
+    border-radius: 5px 5px 0 0;
+    margin: 5px;
+  }
+  .texture h5 {
+    margin: .2em 0 0 0;
+    text-align: center;
+    border-bottom: 1px solid black;
+  }
+</style>
+<script src="jswad.js"></script>
+<script>
+var jswad = new JSWad();
+jswad.load('DOOM.WAD').then((wad) => {
+  var textures = wad.getTextures();
+  console.log('textures!', textures);
+});
+</script>

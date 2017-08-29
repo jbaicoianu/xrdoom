@@ -1,0 +1,22 @@
+<script src="jswad.js"></script>
+<script>
+/*
+foo = new JSWad();
+foo.load('DOOM.WAD').then((wad) => {
+  var map = wad.getMap('E1M1');
+  var geo = map.getGeometry();
+  console.log('map it!', map, geo);
+});
+*/
+
+</script>
+<fireboxroom>
+  <assets>
+    <AssetScript src="doomlevel.js" />
+  </assets>
+  <room pos="10.65 -1.2 36.1" shadows="true">
+    <DoomLevel wad="DOOM.WAD" map="E1M1" scale=".01 .01 .01" />
+  </room>
+</fireboxroom>
+<script src="https://web.janusvr.com/janusweb.js"></script>
+<script>elation.janusweb.init()</script>
