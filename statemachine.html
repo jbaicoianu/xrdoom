@@ -1,0 +1,14 @@
+<script src="statemachine.js"></script>
+<script type="module">
+  import * as doomfuncs from "./srcport/p_enemy.js"
+
+  var doomgame = new DoomStateManager(doomfuncs);
+
+  doomgame.load('doomthings.json').then((actors) => {
+    var enemy = actors.create('MT_TROOP');
+    var enemy2 = actors.create('MT_TROOP');
+    var enemy3 = actors.create('MT_SPIDER');
+
+    actors.start();
+  });
+</script>
