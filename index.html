@@ -1,0 +1,138 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<html>
+ <head>
+  <title>-=(- SPISPOPD.LOL -)=- ONLINE DOOM WEBPAGE</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:site" content="@bai0" />
+  <meta name="twitter:title" content="Spispopd.lol - HTML Doom WebGL/WebVR Level Viewer" />
+  <meta name="twitter:description" content="A Doom level viewer that runs directly in the browser" />
+  <meta name="twitter:image" content="http://spispopd.lol/images/spispopd-bg.png" />
+
+ </head>
+ <body bgcolor="black" text="white" link="red" vlink="red">
+  <table width="100%">
+   <tr>
+    <td width="220" valign="top">
+     <img src="images/spispopd.png" alt="SpispopD"><br>
+     <center><font size="-2">.lol</font></center>
+     <hr>
+     <a href="index.html">Home</a><br><br>
+     <a href="about.html">About</a><br><br>
+     <a href="doomsw.html">Doom</a><br><br>
+     <a href="heretic.html">Heretic</a><br><br>
+     <a href="cheats.html">Cheats</a><br><br>
+     <a href="https://github.com/jbaicoianu/wadjs">Source Code</a><br><br>
+     <a href="https://twitter.com/bai0">Guestbook</a><br><br>
+
+    </td>
+    <td valign="top">
+     <br>
+     <br>
+     <center>
+      <img src="images/mamagnolia_acresunderconstruction.gif" alt="[Under Construction]"><br>
+     </center>
+     <br>
+     <p>Spispopd.lol is an online viewer for Doom and Heretic maps.  It is able to load .wad files, extract their resources, and render them using JanusWeb, which gives us a way to explore these worlds in XR.
+     <br>
+     <br>
+     <br>
+     <br>
+     <table width="90%">
+      <tr>
+       <td bgcolor="darkred"><table border="1" width="100%" cellpadding="4" bordercolor="gray" cellspacing="0"><tr><td>December 20, 2019</td></tr></table></td>
+      </tr>
+      <tr>
+       <td>
+        <font size="+2">Updated to work with latest Three.js</font><br>
+        &nbsp;&nbsp; Looks like things broke recently when we upgraded to a newer version of Three.js, which renamed some functions.  Oops!  It's fixed now, and so is the HUD and mini-map.  Enjoy!
+        <br>
+        <br>
+        -- bai
+       </td>
+      </tr>
+     </table>
+     <br>
+     <table width="90%">
+      <tr>
+       <td bgcolor="darkred"><table border="1" width="100%" cellpadding="4" bordercolor="gray" cellspacing="0"><tr><td>February 26, 2018</td></tr></table></td>
+      </tr>
+      <tr>
+       <td>
+        <font size="+2">Now working in Firefox 65</font><br>
+        &nbsp;&nbsp; As mentioned in the previous post, Firefox has fixed their ES6 Module bug, and with the release of Firefox 65, WebVR Doom now runs in every major browser!  Woohoo!
+        <br>
+        <br>
+        &nbsp;&nbsp; Now we're just waiting on Edge...their slow approach to adopting web standards means that we've used some functions they haven't yet implemented.  Apparently Edge 18 fixes at least one of these issues - so now I just have to figure out how to actually upgrade.  That, or wait them out until they release their <a href="https://github.com/MicrosoftEdge/MSEdge">newly-announced Chromium-based version</a>...
+        <br>
+        <br>
+        -- bai
+       </td>
+      </tr>
+     </table>
+     <br>
+     <table width="90%">
+      <tr>
+       <td bgcolor="darkred"><table border="1" width="100%" cellpadding="4" bordercolor="gray" cellspacing="0"><tr><td>December 6, 2018</td></tr></table></td>
+      </tr>
+      <tr>
+       <td>
+        <font size="+2">Firefox Nightly support!</font><br>
+        &nbsp;&nbsp; Hooray!  I'm excited to announce that we were able to identify the <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1488117">bug</a> which was preventing WadJS from running in Firefox, and once we had a simplified test case, the team over at <a href="https://mozilla.org/">Mozilla</a> was able to provide a fix in a matter of hours.  That fix has already made it into the latest Nightly builds, meaning that you can now use WadJS to view Doom levels in Firefox Nightly, and that this fix should make its way into a release version very shortly.  Thanks, Mozilla!
+        <br>
+        <br>
+        &nbsp;&nbsp; Now we're just waiting on Edge...their slow approach to adopting web standards means that we've used some functions they haven't yet implemented.  Apparently Edge 18 fixes at least one of these issues - so now I just have to figure out how to actually upgrade.  That, or wait them out until they release their <a href="https://github.com/MicrosoftEdge/MSEdge">newly-announced Chromium-based version</a>...
+        <br>
+        <br>
+        -- bai
+       </td>
+      </tr>
+     </table>
+     <br>
+     <table width="90%">
+      <tr>
+       <td bgcolor="darkred"><table border="1" width="100%" cellpadding="4" bordercolor="gray" cellspacing="0"><tr><td>September 25, 2018</td></tr></table></td>
+      </tr>
+      <tr>
+       <td>
+        <font size="+2">Alpha update!!</font><br>
+        &nbsp;&nbsp; Hot on the heels of <a href="https://vesta.janusvr.com">JanusWeb 1.3</a>, we're now making our HTML Doom level viewer public alpha available for everyone to test!  We've been looking forwrd to this release for a while now, we've fixed some of the bugs but there are still plenty left to find - both in our code, and in the browsers (I'm looking at you, <a href="https://mozilla.org">Mozilla</a>!  And, well...you too, Edge, but we'll deal with you later.)<br>
+        <br>
+         &nbsp;&nbsp; If you're interested in how this all works, we're working on a full write-up, but suffice to say we're using some cutting-edge browser technology here - ES6 Modules, HTML5 WebComponents, WebGL/WebVR - the works!  The code for loading WAD files in JS is <a href="https://github.com/jbaicoianu/wadjs">available on Github</a>, we'll be publishing the client code along with the technical write-up soon - keep an eye out for that in the next couple weeks.
+        <br>
+        <br>
+        -- bai
+       </td>
+      </tr>
+     </table>
+     <br>
+     <table width="90%">
+      <tr>
+       <td bgcolor="darkred"><table border="1" width="100%" cellpadding="4" bordercolor="gray" cellspacing="0"><tr><td>September 2, 2018</td></tr></table></td>
+      </tr>
+      <tr>
+       <td>
+        <font size="+2">ACK!</font><br>
+        &nbsp;&nbsp; 25 years?!  Has it really been that long since DooM came out?  Hmm...well, it's my birthday, so I figured I'd celebrate by releasing HTML DooM!  You can pick a game to play from the menu at the left.  You'll also find a page which lists all of the cheats (get off my lawn ya dang cheaters, LoL!).<br>
+        <br>
+         &nbsp;&nbsp; Don't forget to leave a comment on my guestbook if you like what you see!  And if you want to chat, you can find me on Freenode IRC #threejs.
+        <br>
+        <br>
+        -- bai
+       </td>
+      </tr>
+     </table>
+    </td>
+   </tr>
+   <tr>
+    <td>
+     <img src="images/netscape1.gif" alt="Netscape Navigator 3.0" alt="Works in Netscape Navigator 3.0">
+     <img src="images/google-chrome-logo-png-0.png" width="30" alt="Works in Google Chrome">
+     <img src="images/firefox.png" width="30" alt="Works in Firefox >= 65"></a>
+     <img src="images/safari-icon.png" width="30" alt="Safari">
+    </td>
+   </tr>
+  </table>
+ </body>
+</html>
