@@ -38,7 +38,7 @@ elation.elements.define('doom.client', class extends elation.elements.janus.view
     }
   }
   getRoomURL() {
-    return 'data:text/html,' + encodeURIComponent('<title>WebVR Doom | E1M1</title><fireboxroom><assets><AssetScript src="https://baicoianu.com/~bai/doom/doomlevel.js" /></assets><room pos="10.65 0 36.1" shadows="true" pbr="false" ambient=".8 .8 .8" walk_speed="5" run_speed="10" xdir="-1 0 0" zdir="0 0 -1" defaultlights="false"><DoomLevel js_id="doomlevel" wad="' + this.wadsrc + '"' + (this.pwad ? ' pwad="' + this.pwad + '"' : '') + (this.musicpath ? ' musicpath="' + this.musicpath + '"' : '') + ' map="' + (this.map || 'E1M1') + '" scale=".0328 .0328 .0328" /><object id="sphere" pos="0 -9999 0" rotate_deg_per_sec="1" /></room></fireboxroom>');
+    return 'data:text/html,' + encodeURIComponent('<title>WebVR Doom | E1M1</title><fireboxroom><assets><AssetScript src="https://baicoianu.com/~bai/doom/doomlevel.js" /></assets><room require="linesegments" pos="10.65 0 36.1" shadows="true" pbr="false" ambient=".8 .8 .8" walk_speed="8" run_speed="10" xdir="-1 0 0" zdir="0 0 -1" defaultlights="false"><DoomLevel js_id="doomlevel" wad="' + this.wadsrc + '"' + (this.pwad ? ' pwad="' + this.pwad + '"' : '') + (this.musicpath ? ' musicpath="' + this.musicpath + '"' : '') + ' map="' + (this.map || 'E1M1') + '" scale=".0328 .0328 .0328" fog="true" fog_col="0 0 0" fog_density=".05"/><object id="sphere" pos="0 -9999 0" rotate_deg_per_sec="1" /></room></fireboxroom>');
   }
 });
 
@@ -167,12 +167,13 @@ console.log('new automap', obj);
       var linedef = linedefs[i],
           v1 = map.getVertex(linedef.v1),
           v2 = map.getVertex(linedef.v2);
-
-      ctx.strokeStyle = this.getLinedefColor(linedef);
       ctx.lineWidth = 2;
       ctx.beginPath();
+      ctx.strokeStyle = this.getLinedefColor(linedef);
+
       ctx.moveTo((v1.x + offset[0]) * mapscale, -(v1.y + offset[1]) * mapscale);
       ctx.lineTo((v2.x + offset[0]) * mapscale, -(v2.y + offset[1]) * mapscale);
+
       ctx.stroke();
       ctx.closePath();
     }

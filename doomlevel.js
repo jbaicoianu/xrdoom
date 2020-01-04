@@ -1,9 +1,15 @@
+const settings = {
+  thinglights: false,
+  thinglightshadows: false,
+};
+
+
 room.registerElement('doomlevel', {
   wad: 'DOOM.WAD',
   pwad: '',
   map: 'E1M1',
   musicpath: 'https://spispopd.lol/music/doom/',
-  showthings: false,
+  showthings: true,
   thingdefs: {},
 
   create: function() {
@@ -37,7 +43,7 @@ room.registerElement('doomlevel', {
         let audio = player.ears.children[0].context;
         for (let k in this.sounds) {
           let sound = this.sounds[k];
-          console.log('register room sound', k, sound);
+          //console.log('register room sound', k, sound);
           var buffer = audio.createBuffer(1, sound.samples, sound.rate);
           buffer.getChannelData(0).set(sound.pcm);
           room.loadNewAsset('sound', { id: k, buffer: buffer, rate: this.sounds[k].rate });
@@ -46,7 +52,7 @@ room.registerElement('doomlevel', {
     } catch (e) {
       console.log('Doom init failed', e);
     }
-    this.doomplayer = this.createObject('doomplayer', {collision_id: 'sphere', collision_scale: V(24)});
+    this.doomplayer = this.createObject('doomplayer', {/*collision_id: 'sphere', collision_scale: V(24)*/});
   },
   update(dt) {
     this.frametime = performance.now();
@@ -205,11 +211,21 @@ room.registerElement('doomlevel', {
   loadMap: function(mapname) {
     if (this.currentmap && this.currentmap.parent) {
       this.currentmap.parent.remove(this.currentmap);
+
+      if (this.collider && this.collider.parent) {
+        this.collider.parent.remove(this.collider);
+      }
+      if (this.debug) {
+        this.debug.die();
+      }
+
       this.stopMusic();
       if (this.things) {
         for (let i = 0; i < this.things.length; i++) {
           // FIXME - dumb hack, the player should keep track of its own things
           if (this.doomplayer.rockets.indexOf(this.things[i]) == -1) {
+            this.removeChild(this.things[i]);
+            this.things[i].stop();
             this.things[i].die();
           }
         }
@@ -228,7 +244,11 @@ room.registerElement('doomlevel', {
     var textures = wad.getTextures();
     var geometries = map.getGeometry();
     var sectormap = map.getSectorMap();
-    console.log('got some geo', geometries, sectormap, map, textures);
+    //console.log('got some geo', geometries, sectormap, map, textures);
+
+    //let restrictsectors = [72,74]; // back room
+    //let restrictsectors = [37]; // front room steps
+    let restrictsectors = false;//[22, 23]; // courtyard tunnel vomitorium
 
     /*    
     if (!this.automap) { 
@@ -259,17 +279,21 @@ room.registerElement('doomlevel', {
         texture.minFilter = THREE.NearestFilter;
         texture.magFilter = THREE.NearestFilter;
       }
-      var mat = new THREE.MeshPhysicalMaterial({
+      var mat = new THREE.MeshPhongMaterial({
         color: 0xffffff,
-        side: THREE.DoubleSide,
+        //side: THREE.DoubleSide,
         roughness: 0.8,
         map: texture,
         transparent: (textures[k.toLowerCase()] ? textures[k.toLowerCase()].transparent : false),
         vertexColors: THREE.VertexColors
       });
       var mesh = new THREE.Mesh(geo, mat);
+      mesh.name = 'sector-' + k + '-walls';
       mesh.castShadow = true;
       mesh.receiveShadow = true;
+      if (mat.transparent) {
+        mesh.renderOrder = 999;
+      }
       currentmap.add(mesh);
 
       //var collidermesh = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({color: 0xffff00, opacity: .2, transparent: true, side: THREE.DoubleSide}));
@@ -290,61 +314,21 @@ room.registerElement('doomlevel', {
         ceilingvertoffset = 0;
 
     var texturegroups = {};
-    for (var i = 0; i < sectormap.length; i++) {
-      var linedefs = sectormap[i];
-      var sectorverts = [];
-      var edges = {};
-      // Sort vertices into a sequential path around the perimeter
-      for (var j = 0; j < linedefs.length; j++) {
-        var linedef = linedefs[j];
-        var side1 = map.getSidedef(linedef.side1),
-            side2 = map.getSidedef(linedef.side2);
-
-        var v1, v2;
-        if (side1.sector == i) {
-          v1 = map.getVertex(linedef.v1);
-          v2 = map.getVertex(linedef.v2);
-          edges[linedef.v1] = linedef.v2;
-        } else if (side2 && side2.sector == i) {
-          v1 = map.getVertex(linedef.v2);
-          v2 = map.getVertex(linedef.v1);
-          edges[linedef.v2] = linedef.v1;
-        }
-  
-        sectorverts.push(v1, v2);
-      }
-      var vertexlist = [];
-      var keys = Object.keys(edges);
-      var first = keys[0];
-      var current = first;
-
-      // FIXME - some sectors don't seem to form closed loops (or my algorithm is shit).  Limit to 100 then bail - for now.
-      // FIXME - ok, it seems like the sectors which cause problems are those which fully enclose other sectors, eg, those with holes
-      //         Our current algorithm picks a random segment and follows it until it loops back on itself, then tries to triangulate
-      //         that. This fails if we start on a segment that's part of a "hole" - all our segment normals face outwards, and 
-      //         triangulation fails.  We should detect this, mark it as a hole, and continue until all segments are accounted for,
-      //         and we have exactly one sequence of segments whose normals face inwards, and 0 or more "hole" segments
-
-var f = 0;
-      do {
-        vertexlist.push(new THREE.Vector2().copy(map.getVertex(current)));
-        current = edges[current];
-//console.log(' - check', current, first);
-f++;
-      } while (current != first && f < 100);
-      console.log(i, vertexlist, edges, linedefs);
-
-      if (vertexlist.indexOf(undefined) != -1) {
-        console.error('undefined vertices in vertex list!', vertexlist, linedef, side1, side2);
-        continue;
-      }
-
+    let sectorshapes = this.getSectorShapes(map);
+    for (let i = 0; i < sectorshapes.length; i++) {
+if (restrictsectors && restrictsectors.indexOf(i) == -1) continue;
       var sector = map.getSector(i);
-
+      let vertexlist = sectorshapes[i].vertexlist.slice(0);
       var hasfloor = sector.floorpic != '-';
       var hasceiling = sector.ceilingpic != '-';
+      var linedefs = sectormap[i];
 
-      var shape = new THREE.Shape(vertexlist);
+      let holes = this.getContainedSectors(vertexlist, sectorshapes);
+//console.log(i, sector, vertexlist, sectorshapes[i], linedefs, holes, sectormap);
+//if (holes.length > 0) { console.log('holes!', sector, vertexlist, holes, holes.map(hole => new THREE.Path().setFromPoints([...hole, hole[0]]))); }
+      //var sectorfaces = THREE.ShapeUtils.triangulateShape(vertexlist, holes.map(hole => new THREE.Path().setFromPoints([...hole, hole[0]])));
+      holes.forEach(hole => this.sliceSector(vertexlist, hole));
+
       var sectorfaces = THREE.ShapeUtils.triangulateShape(vertexlist, []);
       var lightlevel = sector.lightlevel / 255;
       //console.log(shape, sectorfaces);
@@ -356,7 +340,7 @@ f++;
           floorverts.push(vertexlist[j].x, vertexlist[j].y, sector.floorheight);
         }
         if (hasceiling) {
-          newceilingverts.unshift(vertexlist[j].x, vertexlist[j].y, sector.ceilingheight);
+          newceilingverts.push(vertexlist[j].x, vertexlist[j].y, sector.ceilingheight);
         }
       }
 
@@ -397,7 +381,7 @@ f++;
         texture.minFilter = THREE.NearestFilter;
         texture.magFilter = THREE.NearestFilter;
       }
-      var mat = new THREE.MeshPhysicalMaterial({
+      var mat = new THREE.MeshPhongMaterial({
         color: 0xffffff,
         side: THREE.DoubleSide,
         roughness: 0.8,
@@ -408,13 +392,20 @@ f++;
       var mesh = new THREE.Mesh(geo, mat);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
+      if (mat.transparent) {
+        mesh.renderOrder = 999;
+      }
       currentmap.add(mesh);
 
       //var collidermesh = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({color: 0xffff00, opacity: .2, transparent: true, side: THREE.DoubleSide}));
       //this.colliders.add(collidermesh);
       //this.setCollider('mesh', {mesh: collidermesh});
 
-      this.geometries[k] = geo; // FIXME - is it possible that this texture was already used as a wall texture?
+      if (this.geometries[k]) {
+        this.geometries[k] = THREE.BufferGeometryUtils.mergeBufferGeometries([this.geometries[k], geo]);
+      } else {
+        this.geometries[k] = geo; // FIXME - is it possible that this texture was already used as a wall texture?
+      }
     }
 
     var spawnpoints = map.getThingsByType(1);
@@ -426,24 +417,233 @@ f++;
       var playerheight = currentsector.floorheight;
       var newy = (playerheight * this.scale.y);
 
-      player.pos = V(spawnpoint.x * this.scale.x, newy, -spawnpoint.y * this.scale.z);
+      room.spawnpoint.position.set(spawnpoint.x * this.scale.x, newy, -spawnpoint.y * this.scale.z);
+      room.spawnpoint.quaternion.setFromEuler(new THREE.Euler(0, (spawnpoint.angle - 90) * THREE.Math.DEG2RAD, 0));
+      player.reset_position();
     }
 
     this.objects['3d'].add(currentmap);
     let collidermap = currentmap.clone();
+    collidermap.userData.thing = this;
     collidermap.traverse(n => { if (n.material) n.material = new THREE.MeshPhongMaterial({color: 0xffff00, opacity: .2, transparent: true}) });
     this.collidable = false;
     this.colliders.add(collidermap);
     this.setCollider('mesh', {mesh: collidermap});
-console.log('beh');
+    this.collider = collidermap;
     //this.collision_trigger = true;
 
+    this.things = [];
     if (this.showthings) {
       this.createThings();
     }
     this.startMusic();
+
+    if (!this.debug) {
+      this.debug = this.createObject('doomdebugger', {doomplayer: this.doomplayer});
+    } else {
+      this.debug.reset();
+      this.appendChild(this.debug);
+    }
+
     this.refresh();
 
+  },
+  getSectorShapes(map) {
+    let sectormap = map.getSectorMap();
+    let shapes = [];
+    for (var i = 0; i < sectormap.length; i++) {
+      let linedefs = sectormap[i];
+      let sectorverts = [];
+      let edges = {};
+      // Sort vertices into a sequential path around the perimeter
+      for (let j = 0; j < linedefs.length; j++) {
+        let linedef = linedefs[j];
+        let side1 = map.getSidedef(linedef.side1),
+            side2 = map.getSidedef(linedef.side2);
+
+        let v1, v2;
+        if (side1.sector == i) {
+          v1 = map.getVertex(linedef.v1);
+          v2 = map.getVertex(linedef.v2);
+          edges[linedef.v1] = linedef.v2;
+        } else if (side2 && side2.sector == i) {
+          v1 = map.getVertex(linedef.v2);
+          v2 = map.getVertex(linedef.v1);
+          edges[linedef.v2] = linedef.v1;
+        }
+  
+        sectorverts.push(v1, v2);
+      }
+      var vertexlist = [];
+      var keys = Object.keys(edges);
+      var first = keys[0];
+      var current = first;
+
+      // FIXME - some sectors don't seem to form closed loops (or my algorithm is shit).  Limit to 100 then bail - for now.
+      // FIXME - ok, it seems like the sectors which cause problems are those which fully enclose other sectors, eg, those with holes
+      //         Our current algorithm picks a random segment and follows it until it loops back on itself, then tries to triangulate
+      //         that. This fails if we start on a segment that's part of a "hole" - all our segment normals face outwards, and 
+      //         triangulation fails.  We should detect this, mark it as a hole, and continue until all segments are accounted for,
+      //         and we have exactly one sequence of segments whose normals face inwards, and 0 or more "hole" segments
+
+var f = 0;
+      do {
+        if (!current) break;
+        vertexlist.push(new THREE.Vector2().copy(map.getVertex(current)));
+        current = edges[current];
+//console.log(' - check', current, first);
+f++;
+      } while (current != first && f < 100);
+
+      if (vertexlist.indexOf(undefined) != -1) {
+        console.error('undefined vertices in vertex list!', vertexlist, linedef, side1, side2);
+        continue;
+      }
+
+      var shape = new THREE.Shape(vertexlist);
+      if (!THREE.ShapeUtils.isClockWise(vertexlist)) {
+        vertexlist.reverse();
+      }
+      shapes[i] = {
+        vertexlist,
+        edges,
+        linedefs,
+        shape,
+      };
+    }
+    return shapes;
+  },
+  getContainedSectors(sector, sectorshapes) {
+    let contained = [];
+    for (let i = 0; i < sectorshapes.length; i++) {
+      if (this.sectorContainsShape(sector, sectorshapes[i].vertexlist)) {
+        let vertexlist = sectorshapes[i].vertexlist.slice(0);
+        contained.push(vertexlist);
+      }
+    }
+    return contained;
+  },
+  sectorContainsShape(sector, shape) {
+    // First, check the bounding box of each sector, if we're fully outside then no need to check the vertices
+    let bbox1 = this.getBoundingBox(sector),
+        bbox2 = this.getBoundingBox(shape);
+    //console.log(bbox1, bbox2, bbox1.containsBox(bbox2));
+    if (!bbox1.equals(bbox2) && bbox1.containsBox(bbox2)) {
+      // We have a potentially overlapping sector, let's check the vertices and make sure it's fully contained
+      // Start by picking any vector that isn't shared with the potentially-containing sector
+      let vertex = this.getExclusiveVertex(shape, sector);
+      if (vertex) {
+        return this.pointIsInPolygon(vertex, sector);
+      }
+    }
+    return false;
+  },
+  getExclusiveVertex(sector1, sector2) {
+    for (let i = 0; i < sector1.length; i++) {
+      for (let j = 0; j < sector2.length; j++) {
+        if (!sector1[i].equals(sector2[j])) {
+          return sector1[i];
+        }
+      }
+    } 
+    return null;
+  },
+  getSectorClosestPoints(sector1, sector2) {
+    let closest = [sector1[0], sector2[0]],
+        dist = Infinity;
+
+    for (let i = 0; i < sector1.length; i++) {
+      for (let j = 0; j < sector2.length; j++) {
+        let newdist = sector1[i].distanceTo(sector2[j]);
+        if (newdist < dist) {
+          closest[0] = sector1[i];
+          closest[1] = sector2[j];
+          dist = newdist;
+        }
+      }
+    }
+
+    return closest;
+  },
+  sliceSector(sector, hole) {
+//console.log('slice!', sector, hole);
+    if (THREE.ShapeUtils.isClockWise(hole)) {
+      hole = hole.slice(0).reverse()
+//console.log('it was reversed, fix it', );
+    }
+    let closest = this.getSectorClosestPoints(sector, hole),
+        idx1 = sector.indexOf(closest[0]),
+        idx2 = hole.indexOf(closest[1]);
+    if (idx1 != -1 && idx2 != -1) {
+      //console.log('ok split it up', closest, idx1, idx2, sector, hole);
+      //sector.splice((idx1+1)%sector.length, 0, ...hole.slice(idx2).concat(hole.slice(0, idx2)).concat([hole[idx2], sector[idx1]]));
+      // Inject the hole's vertices into our containing sector's vertex list, spltting each list at their closest points.
+      // See https://ianbelcher.me/tech-blog/building-a-webxr-version-of-doom for a detailed explanation
+      sector.splice((idx1+1)%sector.length, 0, ...hole.slice(idx2), ...hole.slice(0, idx2), ...[hole[idx2], sector[idx1]]);
+    }
+  },
+  getBoundingBox(sector) {
+    let bbox = new THREE.Box2();
+    for (let i = 0; i < sector.length; i++) {
+      bbox.expandByPoint(sector[i]);
+    }
+    return bbox;
+  },
+  // pointIsInPolygon function, and much of the logic involved with triangulating floors and ceilings, provided by Ian Belcher 
+  // https://ianbelcher.me/tech-blog/building-a-webxr-version-of-doom
+  pointIsInPolygon(point, polygon) {
+    // Ray-trace along x axis. Find all points where:
+    // 1) a polygon edge crossed over the x axis at a position xIntersect
+    // 2) where the start vertex of the edge and the y vertex are equal we need to walk out
+    //    and find the next vertex that is off that axis and ensure that one diverges above
+    //    and the other below.
+    // 3) Count the number of instance the above happens where the intersect has a value less
+    //    than x. If we have an odd number of results, the point is inside the polygon.
+    let intersectingEdges = 0;
+    for (let edgeIndex = 0; edgeIndex < polygon.length; edgeIndex += 1) {
+      const nextIndex = index => (index !== polygon.length - 1 ? index + 1 : 0);
+      const previousIndex = index => (index ? index - 1 : polygon.length - 1);
+      let edgeIndexNext = nextIndex(edgeIndex);
+      let edgeIndexPrevious = previousIndex(edgeIndex);
+
+      if (
+        (polygon[edgeIndex].y < point.y && polygon[edgeIndexNext].y > point.y)
+        || (polygon[edgeIndex].y > point.y && polygon[edgeIndexNext].y < point.y)
+      ) {
+        // We have an intersection of the x axis. Calculate the xIntersect.
+        const totalRise = polygon[edgeIndexNext].y - polygon[edgeIndex].y;
+        const intersectRise = point.y - polygon[edgeIndex].y;
+        const totalRun = polygon[edgeIndexNext].x - polygon[edgeIndex].x;
+        const xIntersect = ((intersectRise / totalRise) * totalRun) + polygon[edgeIndex].x;
+
+        if (xIntersect < point.x) {
+          intersectingEdges += 1;
+        }
+      }
+
+      if (
+        polygon[edgeIndex].x < point.x
+        && polygon[edgeIndex].y === point.y
+        && polygon[edgeIndexPrevious].y !== point.y
+      ) {
+        while (polygon[edgeIndexNext].y === point.y) {
+          edgeIndexNext = nextIndex(edgeIndexNext);
+        }
+        while (polygon[edgeIndexPrevious].y === point.y) {
+          edgeIndexPrevious = previousIndex(edgeIndexPrevious);
+        }
+        if (
+          (polygon[edgeIndexPrevious].y < point.y && polygon[edgeIndexNext].y > point.y)
+          || (polygon[edgeIndexPrevious].y > point.y && polygon[edgeIndexNext].y < point.y)
+        ) {
+          // We have a shared point on the y axis. The xIntersect is simply
+          // equal to the polygons x value which checked was < x above
+          intersectingEdges += 1;
+        }
+      }
+    }
+
+    return intersectingEdges % 2 > 0;
   },
 
   parseMapName: function(name) {
@@ -462,7 +662,7 @@ console.log('beh');
     this.things = [];
     for (var i = 0; i < things.length; i++) {
       var thingprops = things[i];
-      if ((thingprops.options & 0x04) && !(thingprops.options & 0x10)) {
+      if ((thingprops.options & 0x02) && !(thingprops.options & 0x10)) {
         let newthing = this.createThing(thingprops);
         if (newthing) {
           this.things.push(newthing);
@@ -808,14 +1008,13 @@ room.registerElement('doomplayer', {
   createChildren: function() {
     // No visible children, unless we want the doom marine to self-shadow...
 console.log('PLAYER', this.parent);
-
     this.rockets = [
-      this.parent.createObject('doomthing_Missile', { pos: V(0,0,0) }),
-      this.parent.createObject('doomthing_Missile', { pos: V(0,0,0) }),
-      this.parent.createObject('doomthing_Missile', { pos: V(0,0,0) }),
-      this.parent.createObject('doomthing_Missile', { pos: V(0,0,0) }),
-      this.parent.createObject('doomthing_Missile', { pos: V(0,0,0) }),
-      this.parent.createObject('doomthing_Missile', { pos: V(0,0,0) }),
+      this.parent.createObject('doomthing_Missile', { pos: V(0,-9999,0) }),
+      this.parent.createObject('doomthing_Missile', { pos: V(0,-9998,0) }),
+      this.parent.createObject('doomthing_Missile', { pos: V(0,-9997,0) }),
+      this.parent.createObject('doomthing_Missile', { pos: V(0,-9996,0) }),
+      this.parent.createObject('doomthing_Missile', { pos: V(0,-9995,0) }),
+      this.parent.createObject('doomthing_Missile', { pos: V(0,-9994,0) }),
     ];
     this.currentrocket = 0;
 
@@ -885,8 +1084,9 @@ console.log('PLAYER', this.parent);
     var dir = V(player.view_dir.x, -player.view_dir.z, 0);
     var map = this.map;
     var intersections = map.getIntersections(new WadJS.Vertex(player.pos.x / this.level.scale.x, -player.pos.z / this.level.scale.z), dir, this.usedistance);
+console.log(intersections);
+    let handled = false;
     if (intersections.length > 0) {
-      let handled = false;
       for (var i = 0; i < intersections.length; i++) {
         var segment = intersections[i][0];
         var linedef = map.getLinedef(segment.linedef);
@@ -919,6 +1119,7 @@ console.log('PLAYER', this.parent);
         this.level.playSound('DSOOF');
       }
     }
+    return handled;
   },
 
   openDoor: function(linedef, playerside) {
@@ -931,13 +1132,11 @@ console.log(linedef, doorside, linesector, 'tagged?', linedef.tag, sectorid, doo
     var doorsector = this.map.getSector(sectorid);
 console.log('door side!', doorside, doorsector);
 */
-console.log('all the sectors', sectors);
     var params = this.getLinedefParams(linedef);
     for (var i = 0; i < sectors.length; i++) {
       var sector = sectors[i];
       var adjacent = sector.getAdjacentSectors();
       var minheight = linesector.ceilingheight;
-console.log('adjacent', adjacent);
       for (var i = 0; i < adjacent.length; i++) {
         if (adjacent[i].ceilingheight < minheight) {
           minheight = adjacent[i].ceilingheight;
@@ -952,7 +1151,6 @@ console.log('adjacent', adjacent);
         if (params.subtype == 'open' || params.subtype == 'open_wait_close') {
           this.level.raiseSectorCeilingTo(sector.id, minheight - 4, 40);
           //this.parent.playSound('DSDOROPN');
-console.log('lets figure this out', linedef, v1, v2, middle);
           this.level.createObject('sound', { id: 'DSDOROPN', pos: middle, gain: 1, singleshot: true});
           if (params.subtype == 'open_wait_close') {
             setTimeout(() => {
@@ -1087,10 +1285,11 @@ console.log('lets figure this out', linedef, v1, v2, middle);
       var playerpos = this.level.worldToLocal(V(player.pos.x, -player.pos.z, player.pos.y));
       var playervel = this.level.worldToLocal(V(player.vel.x, -player.vel.z, player.vel.y)).multiplyScalar(dt).add(scalarMultiply(this.level.worldToLocal(normalized(V(player.vel.x, -player.vel.z, player.vel.y))), .5));
       
+this.pos = this.level.worldToLocal(V(player.pos));
       var map = this.map;
       // Handle wall collisions
       var speed = playervel.length();
-      if (speed > 1e-3) {
+      if (speed > 1e-5) {
         var intersections = map.getIntersections(new WadJS.Vertex(player.pos.x / this.level.scale.x, -player.pos.z / this.level.scale.z), scalarMultiply(playervel, 1 / speed), speed);
         if (intersections.length > 0) {
           //console.log('boing!', intersections);
@@ -1121,14 +1320,17 @@ console.log('lets figure this out', linedef, v1, v2, middle);
             // FIXME - need to calculate proper reflection force here, and push back against the player as long as they're in contact with the wall
             //this.wallforce.update(scalarMultiply(normal, -dot * 100));
             //player.vel = translate(player.vel, scalarMultiply(normal, -dot));
+          } else if (currentsector && othersector) {
+//console.log('traversed', currentsector, othersector, linedef, side0, side1);
           } else {
-            this.wallforce.update(V(0));
+            //this.wallforce.update(V(0));
           }
         }
       }
 
       // Handle height
       var currentsector = this.map.getSectorAt(player.pos.x / this.level.scale.x, -player.pos.z / this.level.scale.z);
+      this.lastsector = currentsector;
       var playerheight = currentsector.floorheight;
       var newy = (playerheight * this.level.scale.y);
       var stepheight = 24 * this.level.scale.y;
@@ -1145,6 +1347,8 @@ console.log('lets figure this out', linedef, v1, v2, middle);
         } else if (playerheight == Infinity) {
           player.pos = translate(player.pos, scalarMultiply(player.vel, -dt));
           player.vel = V(0,0,0);
+        } else {
+          player.pos.y = newy;
         }
       }
     }
@@ -1185,7 +1389,10 @@ console.log('lets figure this out', linedef, v1, v2, middle);
   },
   onmousedown: function(ev) {
     if (ev.button === 0 && player.enabled) {
-      this.rockets[this.currentrocket++ % this.rockets.length].fire(this.parent.worldToLocal(V(player.pos)), V(player.dir));
+      if (!this.use()) {
+        // If we're close enough to activate a switch or door, we do that instead of firing
+        this.rockets[this.currentrocket++ % this.rockets.length].fire(this.parent.worldToLocal(V(player.pos)), V(player.dir));
+      }
     }
   },
   onmouseup: function(ev) {
@@ -1215,26 +1422,28 @@ room.registerElement('doomsprite', {
         pos: V(0,28,0),
         //image_id: this.sprite.id,
         tex_linear: true,
-        cull_face: 'none'
+        cull_face: 'none',
+        pickable: false,
+        collidable: false,
       });
       this.advanceFrame(0);
 
-setTimeout(() => {
+//setTimeout(() => {
       //this.plane.objects['3d'].children[1].children[0].onBeforeRender = (renderer, scene, camera) => { this.draw(false, camera) };
-}, 2000);
+//}, 2000);
     }
   },
   //onupdate() {
     //this.draw();
   //},
   advanceFrame(elapsedframetime) {
-    if (elapsedframetime > 0 && this.distanceTo(player) > 20) return; // FIXME - quick hack to reduce sprice processing
+    if (elapsedframetime > 0 && this.distanceToSquared(player.pos) > 400) return; // FIXME - quick hack to reduce sprite processing
 
     this.currentframe = (this.currentframe + 1) % this.frame.length;
     this.draw(true);
   },
   draw(force, camera) {
-    if (!force && this.distanceTo(camera.position) > 20) return; // FIXME - quick hack to reduce sprice processing
+    if (!force && this.distanceToSquared(camera.position) > 400) return; // FIXME - quick hack to reduce sprite processing
     var sprite = this.spriteduh;
 
     if (sprite && this.plane) {
@@ -1280,6 +1489,111 @@ setTimeout(() => {
     return snapangle;
   }
 });
+room.registerElement('doomsprite2', {
+  sprite: null,
+  frame: 'A',
+  angle: 0,
+
+  textures: {},
+
+  _tmpvec: V(),
+
+  createChildren() {
+    this.elapsedframetime = 0;
+    this.currentframe = 0;
+    this.spriteduh = this.sprite
+    this.billboard = 'y';
+    if (this.sprite) {
+      // TODO - register this sprite as an AssetImage, so we can use it via image_id
+      this.plane = this.createObject('Object', {
+        id: 'plane',
+        //scale: V(this.sprite.canvas.width,this.sprite.canvas.height,1),
+        pos: V(0,28,0),
+        //image_id: this.sprite.id,
+        tex_linear: true,
+        cull_face: 'none',
+        pickable: false,
+        collidable: false,
+        texture_offset: V(0),
+        texture_repeat: V(1),
+        depth_test: this.depth_test,
+        depth_write: this.depth_write,
+      });
+      this.advanceFrame(0);
+
+//setTimeout(() => {
+      //this.plane.objects['3d'].children[1].children[0].onBeforeRender = (renderer, scene, camera) => { this.draw(false, camera) };
+//}, 2000);
+    }
+  },
+  //onupdate() {
+    //this.draw();
+  //},
+  advanceFrame(elapsedframetime) {
+    if (elapsedframetime > 0 && this.distanceTo(player) > 20) return; // FIXME - quick hack to reduce sprite processing
+
+    this.currentframe = (this.currentframe + 1) % this.frame.length;
+    this.draw(true);
+  },
+  draw(force, camera) {
+    if (!force && this.distanceTo(camera.position) > 20) return; // FIXME - quick hack to reduce sprite processing
+    let sprite = this.spriteduh,
+        tmpvec = this._tmpvec;
+
+    if (sprite && this.plane) {
+      let camerapos = (camera ? camera.getWorldPosition(tmpvec.set(0,0,0)) : tmpvec.copy(player.pos));
+      let angle = (sprite.frameHasAngles(this.frame[this.currentframe]) ? this.getAngleToViewer(camerapos) : 0);
+/*
+      var frameid = this.frame[this.currentframe] + angle;
+*/
+      let frame = sprite.frames[this.frame[this.currentframe]][angle];
+      let assetid = sprite.id + '_sheet';
+      if (this.plane.image_id != assetid) {
+        let canvas = sprite.getSpriteSheet();
+//console.log('set canvas thing', assetid, canvas);
+        if (!this.textures[assetid]) {
+          room.loadNewAsset('image', { id: assetid, canvas: canvas, tex_linear: false, hasalpha: true });
+          this.textures[assetid] = room.getAsset('image', assetid);
+        }
+        this.plane.image_id = assetid;
+      }
+      let offset = sprite.getSpriteSheetFrame(this.frame[this.currentframe], angle);
+      this.plane.scale.x = frame.width;
+      this.plane.scale.y = frame.height;
+      this.plane.pos.y = frame.height / 2;
+      this.plane.texture_repeat.set(offset[2], offset[3]);
+      this.plane.texture_offset.set(offset[0], offset[1]);
+      this.plane.updateTextureOffsets();
+//console.log(this.frame[this.currentframe], angle, this.plane.texture_offset);
+    }
+    //this.zdir = player.dir;
+    //this.ydir = V(0,1,0);
+  },
+  getAngleToViewer(viewerpos) {
+    if (!this.parent) {
+      this.die();
+      return 1;
+    }
+    let ppos = this.parent.worldToLocal(viewerpos);
+    ppos.y = 0;
+
+    let dir = ppos.clone().normalize();
+    let angle = (Math.atan2(dir.x, dir.z) + Math.PI);
+    // Add 22.5 degrees to our angle so that the angle snap lines up with what we'd expect
+    angle += Math.PI/8;
+    // Normalize angle to 0 <= angle < 2 * Math.PI
+    if (angle >= 2 * Math.PI) {
+      angle -= 2 * Math.PI;
+    }
+
+    // Snap the angle to the closest 45 degree increment, and get the index for the angle
+    let snapangle = Math.floor((angle) / (Math.PI/4)) + 1;
+    
+    return snapangle;
+  }
+});
+room.registerElement('doomdoor', {
+});
 room.registerElement('doomthing_Generic', {
   statemachine: null,
   map: null,
@@ -1305,10 +1619,14 @@ room.registerElement('doomthing_Generic', {
     this.createSprite();
   },
   createSprite() {
-    this.sprite = this.createObject('doomsprite', {
-      sprite: this.map.wad.getSprite(this.spritename),
-      frame: this.spriteframe
-    });
+    if (this.spritename) {
+      this.sprite = this.createObject('doomsprite2', {
+        sprite: this.map.wad.getSprite(this.spritename),
+        frame: this.spriteframe,
+        pickable: false,
+        collidable: false,
+      });
+    }
 /*
     this.pointer = this.createObject('object', {
       id: 'cone',
@@ -1318,6 +1636,7 @@ room.registerElement('doomthing_Generic', {
       col: 'red'
     });
 */
+/*
     if (this.height && this.radius && (this.obstacle || this.shootable || this.pickup)) {
       this.setCollider('cylinder', {height: this.height, radius: this.radius, offset: new THREE.Vector3(0, this.height / 2, 0)});
       if (!this.obstacle) {
@@ -1326,6 +1645,7 @@ room.registerElement('doomthing_Generic', {
       }
       this.addEventListener('physics_collide', (ev) => console.log(this, ev));
     }
+*/
     //this.collision_scale = V(24,48,24);
     //this.collision_id = 'cylinder';
   },
@@ -1761,20 +2081,24 @@ room.extendElement('doomthing_Generic', 'doomthing_Barrel', {
   hitpoints: 500,
   create() {
     this.createSprite();
-    this.light = this.createObject('light', {
-      col: V(0,1,0),
-      pos: V(0, this.height, 0),
-      light_intensity: 4,
-/*
-      light_range: 16,
-      light_shadow: true
-*/
-      light_range: 4,
-      light_shadow: false
-    });
+    if (settings.thinglights) {
+      this.light = this.createObject('light', {
+        col: V(0,1,0),
+        pos: V(0, this.height, 0),
+        light_intensity: 4,
+  /*
+        light_range: 16,
+        light_shadow: true
+  */
+        light_range: 4,
+        light_shadow: false
+      });
+    }
   },
   advanceFrame(frametime) {
-    this.light.light_intensity = 4 + Math.random() * 2;
+    if (this.light) {
+      this.light.light_intensity = 4 + Math.random() * 2;
+    }
     if (this.sprite) {
       this.sprite.advanceFrame(frametime);
     }
@@ -1802,20 +2126,20 @@ room.extendElement('doomthing_Generic', 'doomthing_Candelabra', {
   obstacle: true,
   create() {
     this.createSprite();
-    this.light = this.createObject('light', {
-      col: V(1,1,0),
-      pos: V(0, this.height * 3, 0),
-      light_intensity: 6,
-/*
-      light_range: 16,
-      light_shadow: true
-*/
-      light_range: 6,
-      light_shadow: false
-    });
+    if (settings.thinglights) {
+      this.light = this.createObject('light', {
+        col: V(1,1,0),
+        pos: V(0, this.height * 3, 0),
+        light_intensity: 6,
+        light_shadow: settings.thinglightshadows,
+        light_range: (settings.thinglightshadows ? 16 : 6),
+      });
+    }
   },
   advanceFrame(frametime) {
-    this.light.light_intensity = 4 + Math.random() * 4;
+    if (this.light) {
+      this.light.light_intensity = 4 + Math.random() * 4;
+    }
     if (this.sprite) {
       this.sprite.advanceFrame(frametime);
     }
@@ -1850,17 +2174,15 @@ room.extendElement('doomthing_Generic', 'doomthing_FloorLamp', {
   obstacle: true,
   create() {
     this.createSprite();
-    this.light = this.createObject('light', {
-      col: V(1,1,.9),
-      pos: V(0, this.height * 2, 0),
-      light_intensity: 12,
-      /*
-      light_range: 16,
-      light_shadow: true
-      */
-      light_range: 6,
-      light_shadow: false
-    });
+    if (settings.thinglights) {
+      this.light = this.createObject('light', {
+        col: V(1,1,.9),
+        pos: V(0, this.height * 2, 0),
+        light_intensity: 12,
+        light_shadow: settings.thinglightshadows,
+        light_range: (settings.thinglightshadows ? 16 : 6),
+      });
+    }
   },
 });
 room.extendElement('doomthing_Generic', 'doomthing_HangingLeg', {
@@ -2079,6 +2401,24 @@ room.extendElement('doomthing_Generic', 'doomthing_TallTechnoPillar', {
   height: 16,
   radius: 16,
   obstacle: true,
+
+  create() {
+    this.createSprite();
+    if (settings.thinglights) {
+      this.light = this.createObject('light', {
+        col: V(1,1,1),
+        pos: V(0, this.height * 3, 0),
+        light_intensity: 12,
+        light_shadow: settings.thinglightshadows,
+        light_range: (settings.thinglightshadows ? 16 : 6),
+      });
+    }
+  },
+  advanceFrame(frametime) {
+    if (this.light) {
+      this.light.light_intensity = 10 + 2 * (Math.sin(new Date().getTime() / 500) + 1);
+    }
+  }
 });
 room.extendElement('doomthing_Generic', 'doomthing_TwitchingImpaledHuman', {
   spritename: 'POL6',
@@ -2193,19 +2533,13 @@ room.extendElement('doomthing_Generic', 'doomthing_Missile', {
       pos: V(0),
       light_intensity: 6,
 
-      /*
-      light_range: 24,
-      light_shadow: true,
-      //light_shadow_near: 2,
-      */
-
-      light_range: 8,
-      light_shadow: false,
+      light_shadow: settings.thinglightshadows,
+      light_range: (settings.thinglightshadows ? 24 : 8),
 
       col: V(1,.7,0)
     });
-    this.setCollider('sphere', {radius: this.radius, offset: new THREE.Vector3(0, 24, 0)});
-    this.addEventListener('collision', (ev) => this.explode());
+    //this.setCollider('sphere', {radius: this.radius, offset: new THREE.Vector3(0, 24, 0)});
+    //this.addEventListener('collision', (ev) => this.explode());
   },
   fire: function(pos, dir) {
     this.pos = translate(pos, V(0,24,0));
@@ -2219,9 +2553,10 @@ room.extendElement('doomthing_Generic', 'doomthing_Missile', {
     }
 
     if (!this.sprite) {
-      this.sprite = this.createObject('doomsprite', {
+      this.sprite = this.createObject('doomsprite2', {
         sprite: this.map.wad.getSprite(this.spritename),
-        frame: this.spriteframe
+        frame: this.spriteframe,
+        depth_write: false,
       });
       this.parent.things.push(this);
 
@@ -2246,7 +2581,7 @@ room.extendElement('doomthing_Generic', 'doomthing_Missile', {
       this.sprite.draw(true);
     }
     if (this.active) {
-      let hits = this.raycast(V(0,0,-1));
+      let hits = this.raycast();
       for (let i = 0; i < hits.length; i++) {
         let hit = hits[i];
         if (hit.distance < this.radius) {
@@ -2259,6 +2594,7 @@ room.extendElement('doomthing_Generic', 'doomthing_Missile', {
 
   explode() {
     if (!this.collidable) return;
+    this.collidable = false;
     this.vel = V(0,0.001,0);
     this.spriteframe = 'BCD';
     this.sprite.frame = 'B';
@@ -2270,7 +2606,6 @@ room.extendElement('doomthing_Generic', 'doomthing_Missile', {
     this.light.col = V(.5,0,0);
     //this.level.playSound('DSBAREXP', 100, this.getWorldPosition());
     room.createObject('sound', { pos: this.getWorldPosition(), id: 'DSBAREXP', auto_play: true, gain: 1, singleshot: true });
-    this.collidable = false;
     this.pickable = false;
 
     let shootables = [],
@@ -2305,3 +2640,318 @@ room.extendElement('doomthing_Generic', 'doomthing_Missile', {
     }
   },
 });
+//room.require('linesegments').then(() => {
+  elation.template.add('doomdebugger', `
+    <doom-assets-button></doom-assets-button>
+    <doom-debugger-map id="doomdebuggermap"></doom-debugger-map>
+    <doom-debugger-sector id="doomdebuggersector"></doom-debugger-sector>
+  `);
+  elation.template.add('doomdebugger.map', `
+    <h1>{level}</h1>
+    <ul>
+      <li>Things: {map.things.length}</li>
+      <li>Sectors: {map.sectors.length}</li>
+      <li>Linedefs: {map.linedefs.length}</li>
+      <li>Vertexes: {map.vertexes.length}</li>
+    </ul>
+  `);
+  elation.template.add('doomdebugger.sector', `
+    <h1>Sector {sector.id}</h1>
+    <ul>
+      <li>
+        <h3>Ceiling:</h3>
+        <ul>
+          <li>Texture: {sector.ceilingpic}<doom-debugger-texture-preview id="ceilingtexture" name="{sector.ceilingpic}"></doom-debugger-texture-preview></li>
+          <li>Height:{sector.ceilingheight}
+        </ul>
+      </li>
+      <li>
+        <h3>Floor:</h3>
+        <ul>
+          <li>Texture: {sector.floorpic}<doom-debugger-texture-preview id="floortexture" name="{sector.floorpic}"></doom-debugger-texture-preview></li>
+          <li>Height: {sector.floorheight}</li>
+        </ul>
+      </li>
+      <li><h3>Light: {sector.lightlevel}</h3></li>
+    </ul> 
+    {?linedef}
+      <h1>Linedef {linedef.v1} {linedef.v2}</h1>
+    {/linedef}
+  `);
+  elation.elements.define('doom-debugger-map', class extends elation.elements.base { });
+  elation.elements.define('doom-debugger-sector', class extends elation.elements.base { });
+  elation.elements.define('doom-debugger-texture-preview', class extends elation.elements.base {
+    init() {
+      this.defineAttributes({
+        name: {type: 'string'},
+      });
+      let wad = room.objects['doomlevel'].wadfile;
+      let texture = wad.getTexture(this.name);
+
+      if (texture.canvas) {
+        this.appendChild(texture.canvas);
+      }
+    }
+  });
+  room.registerElement('doomdebugger', {
+    doomplayer: null,
+    create() {
+      this.sectors = {};
+      this.cursor = this.createObject('object', {
+        id: 'sphere',
+        scale: V(4),
+        col: 'yellow',
+        depth_test: true,
+        depth_write: false,
+        opacity: 1,
+      });
+      this.cursorghost = this.createObject('object', {
+        id: 'sphere',
+        scale: V(3),
+        col: 'red',
+        opacity: .2,
+        transparent: true,
+        depth_test: false,
+        depth_write: false,
+        pos: this.cursor.pos,
+      });
+      this.debugwindow = elation.elements.create('ui-window', {
+        append: document.body,
+        title: 'Doom Debugger',
+        left: 1,
+        bottom: 1,
+      });
+      this.debugwindow.setcontent('');
+      this.debugelements = elation.elements.fromTemplate('doomdebugger', this.debugwindow.content);
+    },
+    reset() {
+      for (let k in this.sectors) {
+        if (this.sectors[k].parent === this) {
+          this.removeChild(this.sectors[k]);
+        }
+        delete this.sectors[k];
+      }
+    },
+    update() {
+      let doomplayer = this.doomplayer;
+      if (doomplayer && doomplayer.map) {
+        let hits = player.raycast();
+        // TODO - now that we have all our sidedefs and vertices marked, we can implement some basic editing functionality
+        // - show information about selected sector / sidedef / vertex / thing
+        // - allow modification (geometry, textures, etc)
+        let data = {
+          level: doomplayer.level.map,
+          map: doomplayer.map,
+          sector: false,
+          linedef: false,
+          vertex: false,
+        };
+        for (let i = 0; i < hits.length; i++) {
+          if (!data.sector && hits[i].object.tag == 'DOOMLEVEL') {
+            let cursorpos = this.worldToLocal(V(hits[i].point));
+            this.cursor.pos = cursorpos;
+            this.cursorghost.opacity = .2;
+            //let len = cursorpos.length();
+            //cursorpos.normalize().multiplyScalar(len * .9999);
+            let sector = doomplayer.map.getSectorAt(cursorpos.x, -cursorpos.z);
+            data.sector = sector;
+            if (sector !== this.currentsector) {
+              //console.log(sector);
+              this.setSector(sector);
+              //this.debugwindow.setcontent(elation.template.get('doomdebugger.sector', data));
+              if (this.debugelements.doomdebuggermap) { 
+                this.debugelements.doomdebuggermap.innerHTML = elation.template.get('doomdebugger.map', data);
+              }
+              if (this.debugelements.doomdebuggersector) { 
+                this.debugelements.doomdebuggersector.innerHTML = elation.template.get('doomdebugger.sector', data);
+              }
+            }
+          } else if (!data.linedef && hits[i].object.tag == 'LINESEGMENTS') {
+            let line = hits[i].object.getLine(hits[i].index);
+          }
+        }
+/*
+        if (this.currentsector) {
+          let sector = this.currentsector,
+              map = sector.map,
+              sectormap = map.getSectorMap(),
+              linedefs = sectormap[sector.id];
+          //data.linedef = linedefs[0];
+        }
+*/
+      }
+    },
+    setSector(sector) {
+      for (let k in this.sectors) {
+        if (this.sectors[k] && this.sectors[k] !== sector && this.sectors[k].parent === this) {
+          this.removeChild(this.sectors[k]);
+        }
+      }
+/*
+      if (this.currentsector && this.sectors[this.currentsector.id]) {
+        this.sectors[this.currentsector.id].hide();
+      }
+*/
+      this.currentsector = sector;
+      if (!this.sectors[sector.id]) {
+        this.sectors[sector.id] = this.createObject('doomdebugger_sector', {
+          map: this.doomplayer.map,
+          level: this.doomplayer.level,
+          sector: sector,
+          lighting: false,
+          js_id: 'doomdebugger_sector_' + sector.id,
+          //pos: this.worldToLocal(V(player.cursor_pos)),
+        });
+      } else {
+        //this.sectors[sector.id].pos = this.worldToLocal(V(player.cursor_pos));
+        this.appendChild(this.sectors[sector.id]);
+      }
+
+      //this.debugwindow.setcontent('<h1>Sector ' + sector.id + '</h1>');
+    }
+  });
+
+  room.registerElement('doomdebugger_sector', {
+    map: null,
+    level: null,
+    sector: null,
+    create() {
+      //this.createObject('text', { text: this.sector.id, pos: V(0, 1, 0) });
+      let sector = this.sector,
+          map = sector.map,
+          sectormap = map.getSectorMap(),
+          linedefs = sectormap[sector.id];
+
+      let linedefpoints = [],
+          linedefcolors = [],
+          verts = {};
+      for (let i = 0; i < linedefs.length; i++) {
+        let linedef = linedefs[i],
+            v1 = map.getVertex(linedef.v1),
+            v2 = map.getVertex(linedef.v2);
+
+        let linedefcolor = this.getLinedefColor(linedef);
+
+        verts[linedef.v1] = v1;
+        verts[linedef.v2] = v2;
+
+        let floor1 = V(v1.x, sector.floorheight, -v1.y),
+            floor2 = V(v2.x, sector.floorheight, -v2.y),
+            ceil1 = V(v1.x, sector.ceilingheight, -v1.y),
+            ceil2 = V(v2.x, sector.ceilingheight, -v2.y);
+
+        let floormid = floor1.clone().add(floor2).multiplyScalar(.5),
+            dir = floor1.clone().sub(floor2).normalize(),
+            floortick = floormid.clone();
+
+        let side1 = map.getSidedef(linedef.side1);
+        if (side1.sector == sector.id) {
+          floortick.add(dir.cross(V(0,1,0)).multiplyScalar(-5));
+        } else {
+          floortick.add(dir.cross(V(0,1,0)).multiplyScalar(5));
+        }
+
+        let ceilmid = floormid.clone(),
+            ceiltick = floortick.clone();
+        ceilmid.y = ceiltick.y = sector.ceilingheight;
+
+        linedefpoints.push(floor1, floor2);
+        linedefpoints.push(floormid, floortick);
+        linedefpoints.push(ceil1, ceil2);
+        linedefpoints.push(ceilmid, ceiltick);
+
+        linedefcolors.push(linedefcolor, linedefcolor, linedefcolor, linedefcolor, linedefcolor, linedefcolor, linedefcolor, linedefcolor);
+      }
+
+      let vertpoints = [];
+      let centerpoint = V();
+      for (let k in verts) {
+        let v = verts[k],
+            floor = V(v.x, sector.floorheight, -v.y),
+            ceil = V(v.x, sector.ceilingheight, -v.y);
+        vertpoints.push(floor);
+        vertpoints.push(ceil);
+
+        linedefpoints.push(floor, ceil);
+        linedefcolors.push(V(.3), V(.3));
+        centerpoint.add(floor);
+      }
+      centerpoint.divideScalar(vertpoints.length);
+
+      this.wireframe_dimmed = this.createObject('linesegments', {
+        positions: linedefpoints,
+        colors: linedefcolors,
+        depth_test: false,
+        depth_write: true,
+        opacity: .25,
+        //scale: V(1000)
+        pickable: false,
+        collidable: false,
+        linewidth: 5,
+      });
+      this.wireframe_clipped = this.createObject('linesegments', {
+        positions: linedefpoints,
+        colors: linedefcolors,
+        depth_test: true,
+        depth_write: true,
+        opacity: 1,
+        //scale: V(1000)
+        linewidth: 2,
+      });
+
+      this.bleh = this.createObject('object', {
+        id: 'cube',
+        pos: centerpoint,
+        scale: V(10)
+      });
+      this.vertices = this.createObject('particle', {
+        col: '#ffff00',
+        scale: V(.2),
+        depthtest: false,
+        depthwrite: false
+      });
+      for (let i = 0; i < vertpoints.length; i++) {
+        this.vertices.setPoint(i, vertpoints[i], null, null, V(0,1,0));
+      }
+      this.label = this.createObject('paragraph', {
+        text: '<h1 style="background: blue; color: green;">Sector: ' + this.sector.id + '</h1>',
+        billboard: 'y',
+        depth_test: false,
+        depth_write: false,
+        //scale: V(200),
+        pos: centerpoint
+      });
+    },
+    show() {
+      this.visible = true;
+      this.collidable = true;
+      this.pickable = true;
+    },
+    hide() {
+      this.visible = false;
+      this.collidable = false;
+      this.pickable = false;
+    },
+    getLinedefColor(linedef) {
+      var color = '#fb0101'; // default red, solid one-sided wall
+      var side1 = this.map.getSidedef(linedef.side1),
+          side2 = this.map.getSidedef(linedef.side2),
+          sector1 = (side1 ? this.map.getSector(side1.sector) : null),
+          sector2 = (side2 ? this.map.getSector(side2.sector) : null);
+
+      
+      if (linedef.side2 != 65535 && !(linedef.flags & 0x0020)) {
+        //if (linedef.type) {
+        //if (sector1.floorheight == sector2.ceilingheight || sector2.floorheight == sector2.ceilingheight || sector1.tag || sector2.tag) {
+        if (sector1.floorheight == sector2.floorheight && sector1.ceilingheight != sector2.ceilingheight) {
+          color = '#ffff00'; // door (yellow)
+        } else if (sector1.floorheight == sector2.floorheight) {
+          color = '#cccccc'; // two-sided wall (brown)
+        } else {
+          color = '#aa8262'; // two-sided wall (brown)
+        }
+      }
+      return V().fromArray(new THREE.Color(color).toArray());
+    }
+  });
+//});
