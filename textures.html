@@ -1,21 +1,170 @@
-<style>
-  .texture {
-    display: inline-block;
-    border: 1px solid black;
-    border-radius: 5px 5px 0 0;
-    margin: 5px;
+<body class="dark">
+<script src="https://web.janusvr.com/janusweb.js"></script>
+<link rel="stylesheet" href="https://web.janusvr.com/janusweb.css"></link>
+<link rel="stylesheet" href="textures.css"></link>
+<script type="module">
+import * as WadJS from './wadjs/src/wad.js';
+
+elation.component.add('doom.textureinfo', function() {
+  this.init = function() {
+    this.addclass('texture');
+    this.header = elation.ui.label({
+      tag: 'h5',
+      append: this,
+      label: this.args.name
+    });
+//console.log(this.container, this.args.canvas);
+    if (this.args.canvas) {
+      this.container.appendChild(this.args.canvas);
+    }
   }
-  .texture h5 {
-    margin: .2em 0 0 0;
-    text-align: center;
-    border-bottom: 1px solid black;
+}, elation.ui.panel_vertical);
+
+elation.component.add('doom.patchinfo', function() {
+  this.init = function() {
+    this.addclass('texture');
+    this.header = elation.ui.label({
+      tag: 'h5',
+      append: this,
+      label: this.args.id.toString()
+    });
+//console.log(this.container, this.args.canvas);
+    if (this.args.canvas) {
+      this.container.appendChild(this.args.canvas);
+    }
   }
-</style>
-<script src="jswad.js"></script>
-<script>
-var jswad = new JSWad();
-jswad.load('DOOM.WAD').then((wad) => {
+}, elation.ui.panel_vertical);
+
+elation.component.add('doom.spriteinfo', function() {
+  this.init = function() {
+    this.sprite = this.args;
+    this.addclass('texture');
+    this.header = elation.ui.label({
+      tag: 'h5',
+      append: this,
+      label: this.sprite.id
+    });
+    var frames = Object.keys(this.sprite.frames);
+    this.frameselector = elation.ui.select({
+      append: this,
+      items: frames,
+      events: {
+        change: this.handleFrameChange.bind(this)
+      }
+    });
+    this.angleselector = elation.ui.select({
+      append: this,
+      items: [],
+      events: {
+        change: this.handleAngleChange.bind(this)
+      }
+
+    });
+    elation.events.add(this, 'ui_list_item_unselect', elation.bind(this, this.stopAnimation));
+    this.setActiveFrame(frames[0]);
+//console.log(this.container, this.sprite.canvas);
+    var canvascontainer = elation.ui.content({
+      classname: 'canvas_container',
+      append: this,
+      content: this.sprite.canvas
+    });
+  }
+  this.handleFrameChange = function(ev) {
+console.log('boing', ev);
+    this.setActiveFrame(ev.target.value);
+  }
+  this.handleAngleChange = function(ev) {
+console.log('boing', ev);
+    this.setActiveAngle(ev.target.value);
+  }
+  this.setActiveFrame = function(frameid) {
+    this.sprite.setActiveFrame(frameid);
+    var angles = Object.keys(this.sprite.frames[frameid]);
+    this.angleselector.setItems(angles);
+  }
+  this.setActiveAngle = function(angle) {
+    this.sprite.setActiveAngle(angle);
+  }
+  this.startAnimation = function() {
+    if (this.animtimer) {
+      this.stopAnimation();
+    }
+    this.animtimer = setInterval(() => this.sprite.animate(), 200);
+console.log('START!', this.animtimer, this);
+  }
+  this.stopAnimation = function() {
+    if (this.animtimer) {
+      clearInterval(this.animtimer);
+      this.animtimer = false;
+    }
+  }
+}, elation.ui.panel_vertical);
+
+var jswad = window.jswad = new WadJS.WadFile();
+jswad.load('DOOM2.WAD').then((wad) => {
   var textures = wad.getTextures();
-  console.log('textures!', textures);
+  console.log('textures!', textures, wad);
+
+  // TEXTURES
+  var texturepanel = elation.ui.tabbedcontent({
+    classname: 'textures'
+  });
+  var texturelist = elation.ui.list({
+    append: texturepanel,
+    items: textures,
+    attrs: {
+      itemcomponent: 'doom.textureinfo'
+    }
+  });
+
+  // PATCHES
+  var patchpanel = elation.ui.tabbedcontent({
+    classname: 'patches'
+  });
+  var patchlist = elation.ui.list({
+    append: patchpanel,
+    items: wad.patches,
+    attrs: {
+      itemcomponent: 'doom.patchinfo'
+    }
+  });
+
+  // SPRITES
+  var spritepanel = elation.ui.tabbedcontent({
+    classname: 'sprites'
+  });
+  var spritelist = elation.ui.list({
+    append: spritepanel,
+    items: wad.getSprites(),
+    attrs: {
+      itemcomponent: 'doom.spriteinfo'
+    },
+    events: {
+      'ui_list_select': (ev) => { ev.target.itemcomponent.startAnimation(); },
+      'ui_list_unselect': (ev) => { ev.target.itemcomponent.stopAnimation(); },
+    }
+  });
+
+  // ok, make the tabs
+  var tabs = elation.ui.tabbedcontent({
+    append: document.body,
+    items: {
+      textures: {
+        label: 'Textures',
+        content: texturepanel
+      },
+      patches: {
+        label: 'Patches',
+        content: patchpanel
+      },
+      sprites: {
+        label: 'Sprites',
+        content: spritepanel
+      }
+    }
+
+  });
+  tabs.container.id = 'imagelist';
 });
 </script>
+</body>

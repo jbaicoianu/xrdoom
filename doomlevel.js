@@ -1,5 +1,5 @@
 const settings = {
-  thinglights: false,
+  thinglights: true,
   thinglightshadows: false,
 };
 
@@ -10,6 +10,7 @@ room.registerElement('doomlevel', {
   map: 'E1M1',
   musicpath: 'https://spispopd.lol/music/doom/',
   showthings: true,
+  obstacle: true,
   thingdefs: {},
 
   create: function() {
@@ -25,12 +26,14 @@ room.registerElement('doomlevel', {
     });
 */
 
+    this.things = [];
     this.initializeThings();
 
     try {
       this.loader = new WadJS.WadFile();
       this.loader.load(this.wad).then((wad) => {
         this.wadfile = wad;
+        this.doomplayer = this.createObject('doomplayer', {wad: this.wadfile, map: { wad: this.wadfile }, /*collision_id: 'sphere', collision_scale: V(24),*/ autosync: true, js_id: player.getUsername() + '_avatar'});
         if (this.pwad) {
           this.loader.load(this.pwad).then((pwad) => {
             //this.setPWAD(pwad);
@@ -52,7 +55,6 @@ room.registerElement('doomlevel', {
     } catch (e) {
       console.log('Doom init failed', e);
     }
-    this.doomplayer = this.createObject('doomplayer', {/*collision_id: 'sphere', collision_scale: V(24)*/});
   },
   update(dt) {
     this.frametime = performance.now();
@@ -237,6 +239,7 @@ room.registerElement('doomlevel', {
     this.mapnum = this.parseMapName(mapname);
 
     var map = wad.getMap(mapname);
+    this.map = mapname;
     this.mapdata = map;
 
     this.doomplayer.setLevel(this);
@@ -296,8 +299,8 @@ room.registerElement('doomlevel', {
       }
       currentmap.add(mesh);
 
-      //var collidermesh = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({color: 0xffff00, opacity: .2, transparent: true, side: THREE.DoubleSide}));
-      //this.colliders.add(collidermesh);
+      var collidermesh = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({color: 0xffff00, opacity: .2, transparent: true, side: THREE.DoubleSide}));
+      this.colliders.add(collidermesh);
 
       this.geometries[k] = geo;
     }
@@ -428,25 +431,30 @@ if (restrictsectors && restrictsectors.indexOf(i) == -1) continue;
     collidermap.traverse(n => { if (n.material) n.material = new THREE.MeshPhongMaterial({color: 0xffff00, opacity: .2, transparent: true}) });
     this.collidable = false;
     this.colliders.add(collidermap);
+console.log('COLLIDER', collidermap);
     this.setCollider('mesh', {mesh: collidermap});
     this.collider = collidermap;
     //this.collision_trigger = true;
 
-    this.things = [];
     if (this.showthings) {
       this.createThings();
     }
     this.startMusic();
 
+    if (this.showdebug) {
+      this.enableDebug();
+    }
+
+
+    this.refresh();
+  },
+  enableDebug() {
     if (!this.debug) {
       this.debug = this.createObject('doomdebugger', {doomplayer: this.doomplayer});
     } else {
       this.debug.reset();
       this.appendChild(this.debug);
     }
-
-    this.refresh();
-
   },
   getSectorShapes(map) {
     let sectormap = map.getSectorMap();
@@ -659,10 +667,10 @@ f++;
   createThings: function() {
     //this.statemachine = new DoomStateManager();
     var things = this.mapdata.things;
-    this.things = [];
+    //this.things = [];
     for (var i = 0; i < things.length; i++) {
       var thingprops = things[i];
-      if ((thingprops.options & 0x02) && !(thingprops.options & 0x10)) {
+      if ((thingprops.options & 0x04) && !(thingprops.options & 0x10)) {
         let newthing = this.createThing(thingprops);
         if (newthing) {
           this.things.push(newthing);
@@ -707,37 +715,11 @@ f++;
   },
 
   setSectorCeilingHeight(sectorid, height) {
-/*
     var sector = this.mapdata.getSector(sectorid);
-    var sidedefs = this.mapdata.getSidedefsBySector(sectorid);
-    for (var i = 0; i < sidedefs.length; i++) {
-      var sidedef = sidedefs[i];
-      if (sidedef.midtexture != '-') {
-        var geo = this.geometries[sidedef.midtexture];
-        var verts = sidedef.quads.middle;
-        geo.attributes.position.array[verts[1] * 3 + 1] = height;
-        geo.attributes.position.array[verts[2] * 3 + 1] = height;
-        geo.attributes.position.needsUpdate = true;
-      }
-      // FIXME - this needs to look at the adjacent sector heights, and adjust top and bottom verts accordingly
-      if (sidedef.toptexture != '-') {
-        var geo = this.geometries[sidedef.toptexture];
-        var verts = sidedef.quads.bottom;
-        geo.attributes.position.array[verts[0] * 3 + 1] = height;
-        geo.attributes.position.array[verts[3] * 3 + 1] = height;
-        geo.attributes.position.needsUpdate = true;
-      }
-    }
-    if (sector.ceilingvertices) {
-      var geo = this.geometries[sector.ceilingpic];
-      for (var i = 0; i < sector.ceilingvertices.length; i++) {
-        var vert = sector.ceilingvertices[i];
-        geo.attributes.position.array[vert * 3 + 1] = height;
-      }
-      geo.attributes.position.needsUpdate = true;
-    }
     sector.ceilingheight = height;
-*/
+    this.updateSectorGeometry(sectorid);
+  },
+  updateSectorGeometry: function(sectorid) {
     var sector = this.mapdata.getSector(sectorid);
     var sidedefs = this.mapdata.getSidedefsBySector(sectorid);
     var geometries = {};
@@ -749,19 +731,24 @@ f++;
       if (sidedef.midtexture != '-') {
         var geo = this.geometries[sidedef.midtexture];
         var verts = sidedef.quads.middle;
-        geo.attributes.position.array[verts[1] * 3 + 1] = height;
-        geo.attributes.position.array[verts[2] * 3 + 1] = height;
+        geo.attributes.position.array[verts[1] * 3 + 1] = sector.ceilingheight;
+        geo.attributes.position.array[verts[2] * 3 + 1] = sector.ceilingheight;
+        geo.attributes.position.array[verts[0] * 3 + 1] = sector.floorheight;
+        geo.attributes.position.array[verts[3] * 3 + 1] = sector.floorheight;
         geometries[geo.uuid] = geo;
       }
       if (flipside && flipside.midtexture != '-') {
         var geo = this.geometries[flipside.midtexture];
         var verts = flipside.quads.middle;
-        geo.attributes.position.array[verts[1] * 3 + 1] = height;
-        geo.attributes.position.array[verts[2] * 3 + 1] = height;
+        geo.attributes.position.array[verts[1] * 3 + 1] = sector.ceilingheight;
+        geo.attributes.position.array[verts[2] * 3 + 1] = sector.ceilingheight;
         geometries[geo.uuid] = geo;
         if (sector.floorheight == othersector.floorheight) {
-          geo.attributes.position.array[verts[0] * 3 + 1] = height;
-          geo.attributes.position.array[verts[3] * 3 + 1] = height;
+          geo.attributes.position.array[verts[0] * 3 + 1] = sector.ceilingheight;
+          geo.attributes.position.array[verts[3] * 3 + 1] = sector.ceilingheight;
+        } else {
+          //geo.attributes.position.array[verts[0] * 3 + 1] = sector.floorheight;
+          //geo.attributes.position.array[verts[3] * 3 + 1] = sector.floorheight;
         }
       }
 
@@ -769,22 +756,28 @@ f++;
       if (sidedef.bottomtexture != '-') {
         var geo = this.geometries[sidedef.bottomtexture];
         var verts = sidedef.quads.bottom;
-        geo.attributes.position.array[verts[1] * 3 + 1] = height;
-        geo.attributes.position.array[verts[2] * 3 + 1] = height;
+        geo.attributes.position.array[verts[1] * 3 + 1] = sector.ceilingheight;
+        geo.attributes.position.array[verts[2] * 3 + 1] = sector.ceilingheight;
         geometries[geo.uuid] = geo;
         if (sector.floorheight == othersector.floorheight) {
-          geo.attributes.position.array[verts[0] * 3 + 1] = height;
-          geo.attributes.position.array[verts[3] * 3 + 1] = height;
+          geo.attributes.position.array[verts[0] * 3 + 1] = sector.ceilingheight;
+          geo.attributes.position.array[verts[3] * 3 + 1] = sector.ceilingheight;
+        } else {
+          //geo.attributes.position.array[verts[0] * 3 + 1] = sector.floorheight;
+          //geo.attributes.position.array[verts[3] * 3 + 1] = sector.floorheight;
         }
       }
       if (flipside && flipside.bottomtexture != '-') {
         var geo = this.geometries[flipside.bottomtexture];
         var verts = flipside.quads.bottom;
-        geo.attributes.position.array[verts[1] * 3 + 1] = height;
-        geo.attributes.position.array[verts[2] * 3 + 1] = height;
+        geo.attributes.position.array[verts[1] * 3 + 1] = sector.floorheight;
+        geo.attributes.position.array[verts[2] * 3 + 1] = sector.floorheight;
         if (sector.floorheight == othersector.floorheight) {
-          geo.attributes.position.array[verts[0] * 3 + 1] = height;
-          geo.attributes.position.array[verts[3] * 3 + 1] = height;
+          geo.attributes.position.array[verts[0] * 3 + 1] = sector.ceilingheight;
+          geo.attributes.position.array[verts[3] * 3 + 1] = sector.ceilingheight;
+        } else {
+          //geo.attributes.position.array[verts[0] * 3 + 1] = sector.floorheight;
+          //geo.attributes.position.array[verts[3] * 3 + 1] = sector.floorheight;
         }
 
         geometries[geo.uuid] = geo;
@@ -792,12 +785,15 @@ f++;
       if (flipside && flipside.toptexture != '-') {
         var geo = this.geometries[flipside.toptexture];
         var verts = flipside.quads.top;
-        geo.attributes.position.array[verts[0] * 3 + 1] = height;
-        geo.attributes.position.array[verts[3] * 3 + 1] = height;
+        geo.attributes.position.array[verts[0] * 3 + 1] = sector.ceilingheight;
+        geo.attributes.position.array[verts[3] * 3 + 1] = sector.ceilingheight;
         geometries[geo.uuid] = geo;
         if (sector.ceilingheight == othersector.ceilingheight) {
-          geo.attributes.position.array[verts[1] * 3 + 1] = height;
-          geo.attributes.position.array[verts[2] * 3 + 1] = height;
+          geo.attributes.position.array[verts[1] * 3 + 1] = sector.ceilingheight;
+          geo.attributes.position.array[verts[2] * 3 + 1] = sector.ceilingheight;
+        } else {
+          //geo.attributes.position.array[verts[1] * 3 + 1] = sector.floorheight;
+          //geo.attributes.position.array[verts[2] * 3 + 1] = sector.floorheight;
         }
         var uvs = flipside.getUVs('top', sector.ceilingheight, othersector.ceilingheight, flipside.toptexture);
         geo.attributes.uv.array[verts[0] * 2] = uvs[0];
@@ -816,7 +812,15 @@ f++;
       geometries[geo.uuid] = geo;
       for (var i = 0; i < sector.ceilingvertices.length; i++) {
         var vert = sector.ceilingvertices[i];
-        geo.attributes.position.array[vert * 3 + 1] = height;
+        geo.attributes.position.array[vert * 3 + 1] = sector.ceilingheight;
+      }
+    }
+    if (sector.floorvertices) {
+      var geo = this.geometries[sector.floorpic];
+      geometries[geo.uuid] = geo;
+      for (var i = 0; i < sector.floorvertices.length; i++) {
+        var vert = sector.floorvertices[i];
+        geo.attributes.position.array[vert * 3 + 1] = sector.floorheight;
       }
     }
 
@@ -826,7 +830,7 @@ f++;
       geo.computeBoundingSphere();
     }
 
-    sector.ceilingheight = height;
+    //sector.ceilingheight = height;
 //console.log('SET THE CEILING HEIGHT', sectorid, sector, height);
   },
   raiseSectorFloorTo(sectorid, end, speed) {
@@ -847,6 +851,7 @@ f++;
   },
   setSectorFloorHeight(sectorid, height) {
     var sector = this.mapdata.getSector(sectorid);
+/*
     var sidedefs = this.mapdata.getSidedefsBySector(sectorid);
     var geometries = {};
     for (var i = 0; i < sidedefs.length; i++) {
@@ -910,6 +915,9 @@ f++;
 
     sector.floorheight = height;
 //console.log('SET THE FLOOR HEIGHT', sectorid, sector, height);
+*/
+    sector.floorheight = height;
+    this.updateSectorGeometry(sectorid);
   },
   raiseSectorFloorTo(sectorid, end, speed) {
     var now = performance.now(),
@@ -999,23 +1007,21 @@ f++;
 
 room.registerElement('doomplayer', {
   level: null,
+  wad: null,
   map: null,
   angle: 0,
   height: 56,
+  radius: 24,
   usedistance: 48,
   noclip: false,
+
+  _tmpvec: V(),
+  _tmpvec2: V(),
 
   createChildren: function() {
     // No visible children, unless we want the doom marine to self-shadow...
 console.log('PLAYER', this.parent);
-    this.rockets = [
-      this.parent.createObject('doomthing_Missile', { pos: V(0,-9999,0) }),
-      this.parent.createObject('doomthing_Missile', { pos: V(0,-9998,0) }),
-      this.parent.createObject('doomthing_Missile', { pos: V(0,-9997,0) }),
-      this.parent.createObject('doomthing_Missile', { pos: V(0,-9996,0) }),
-      this.parent.createObject('doomthing_Missile', { pos: V(0,-9995,0) }),
-      this.parent.createObject('doomthing_Missile', { pos: V(0,-9994,0) }),
-    ];
+    //let level = {wad: this.parent.wadfile};
     this.currentrocket = 0;
 
     this.keybuffer = '';
@@ -1043,6 +1049,15 @@ console.log('PLAYER', this.parent);
 
     this.addEventListener('trigger', (ev) => console.log('triggered', ev));
 
+    this.sprite = this.createObject('doomthing_Player1Start', {
+      map: this.map,
+      autosync: true,
+      js_id: player.getUsername() + '_avatar_sprite',
+      visible: false
+    });
+console.log('player sprite', this.sprite);
+    this.parent.things.push(this.sprite);
+
   },
 
   setLevel: function(level) {
@@ -1055,9 +1070,24 @@ console.log('PLAYER', this.parent);
     if (!this.hud) {
       this.getHUD();
     }
-    for (let i = 0; i < this.rockets.length; i++) {
-      level.appendChild(this.rockets[i]);
-      this.rockets[i].level = level;
+    if (!this.rockets) {
+      let rocketname = player.getUsername() + '_rocket_';
+      this.rockets = [
+        this.parent.createObject('doomthing_Missile', { pos: V(0,-9999,0), map: { wad: this.wad }, level: level, autosync: true, js_id: rocketname + '1'}),
+        this.parent.createObject('doomthing_Missile', { pos: V(0,-9998,0), map: { wad: this.wad }, level: level, autosync: true, js_id: rocketname + '2'}),
+        this.parent.createObject('doomthing_Missile', { pos: V(0,-9997,0), map: { wad: this.wad }, level: level, autosync: true, js_id: rocketname + '3'}),
+        this.parent.createObject('doomthing_Missile', { pos: V(0,-9996,0), map: { wad: this.wad }, level: level, autosync: true, js_id: rocketname + '4'}),
+        this.parent.createObject('doomthing_Missile', { pos: V(0,-9995,0), map: { wad: this.wad }, level: level, autosync: true, js_id: rocketname + '5'}),
+        this.parent.createObject('doomthing_Missile', { pos: V(0,-9994,0), map: { wad: this.wad }, level: level, autosync: true, js_id: rocketname + '6'}),
+      ];
+      for (let i = 0; i < this.rockets.length; i++) {
+        level.things.push(this.rockets[i]);
+      }
+    } else {
+      for (let i = 0; i < this.rockets.length; i++) {
+        level.appendChild(this.rockets[i]);
+        this.rockets[i].level = level;
+      }
     }
   },
   getAutomap: function() {
@@ -1116,7 +1146,8 @@ console.log(intersections);
         }
       }
       if (!handled) {
-        this.level.playSound('DSOOF');
+        //this.level.playSound('DSOOF');
+        this.level.createObject('sound', { id: 'DSOOF', gain: 1, singleshot: true});
       }
     }
     return handled;
@@ -1135,21 +1166,26 @@ console.log('door side!', doorside, doorsector);
     var params = this.getLinedefParams(linedef);
     for (var i = 0; i < sectors.length; i++) {
       var sector = sectors[i];
+
       var adjacent = sector.getAdjacentSectors();
       var minheight = linesector.ceilingheight;
-      for (var i = 0; i < adjacent.length; i++) {
-        if (adjacent[i].ceilingheight < minheight) {
-          minheight = adjacent[i].ceilingheight;
+      for (var j = 0; j < adjacent.length; j++) {
+        if (adjacent[j].ceilingheight < minheight) {
+          minheight = adjacent[j].ceilingheight;
         }
       }
 
+
       // FIXME - each door should be independently timed and controlled, eg, we should have a 'doomdoor' type
+console.log('go door go', linedef, params);
+      let v1 = this.map.getVertex(linedef.v1),
+          v2 = this.map.getVertex(linedef.v2);
+      let middle = V((v1.x + v2.x) / 2, 0, -(v1.y + v2.y) / 2);
       if (params.type == 'door') {
-        let v1 = this.map.getVertex(linedef.v1),
-            v2 = this.map.getVertex(linedef.v2);
-        let middle = V((v1.x + v2.x) / 2, 0, -(v1.y + v2.y) / 2);
+        let newheight = sector.findLowestCeilingSurrounding();
+console.log('current height is', sector.ceilingheight, newheight. minheight);
         if (params.subtype == 'open' || params.subtype == 'open_wait_close') {
-          this.level.raiseSectorCeilingTo(sector.id, minheight - 4, 40);
+          this.level.raiseSectorCeilingTo(sector.id, newheight - 4, 40);
           //this.parent.playSound('DSDOROPN');
           this.level.createObject('sound', { id: 'DSDOROPN', pos: middle, gain: 1, singleshot: true});
           if (params.subtype == 'open_wait_close') {
@@ -1164,7 +1200,26 @@ console.log('door side!', doorside, doorsector);
           this.level.createObject('sound', { id: 'DSDORCLS', pos: middle, gain: 1, singleshot: true});
           if (params.subtype == 'close_wait_open') {
             setTimeout(() => {
-              this.level.raiseSectorCeilingTo(sector.id, minheight - 4, 40);
+              this.level.raiseSectorCeilingTo(sector.id, newheight - 4, 40);
+              this.level.createObject('sound', { id: 'DSDOROPN', pos: middle, gain: 1, singleshot: true});
+            }, params.delay + 2000);
+          }
+        }
+      } else if (params.type == 'floor') {
+        let newheight = sector.findHighestFloorSurrounding();
+        if (params.subtype == 'lowest_neighbor_ceiling') {
+          this.level.lowerSectorFloorTo(sector.id, newheight + params.offset, 40);
+          //this.parent.playSound('DSDOROPN');
+          this.level.createObject('sound', { id: 'DSPSTART', pos: middle, gain: 1, singleshot: true});
+          setTimeout(() => {
+            this.level.createObject('sound', { id: 'DSPSTOP', pos: middle, gain: 1, singleshot: true});
+          }, params.delay + 2000);
+        } else if (params.subtype == 'close' || params.subtype == 'close_wait_open') {
+          this.level.lowerSectorCeilingTo(sector.id, sector.floorheight, 40);
+          this.level.createObject('sound', { id: 'DSDORCLS', pos: middle, gain: 1, singleshot: true});
+          if (params.subtype == 'close_wait_open') {
+            setTimeout(() => {
+              this.level.raiseSectorCeilingTo(sector.id, newheight - 4, 40);
               this.level.createObject('sound', { id: 'DSDOROPN', pos: middle, gain: 1, singleshot: true});
             }, params.delay + 2000);
           }
@@ -1177,6 +1232,7 @@ console.log('door side!', doorside, doorsector);
       type: 'door',
       subtype: 'open_wait_close', // open, close, open_wait_close, close_wait_open
       speed: 'normal',
+      offset: 0,
       trigger: 'push', // push, switched, walkover, gun
       repeat: true,
       lock: false,
@@ -1240,6 +1296,10 @@ console.log('door side!', doorside, doorsector);
       case 196:
         params.subtype = 'close_wait_open';
         break;
+      case 36:
+        params.type = 'floor';
+        params.subtype = 'lowest_neighbor_ceiling';
+        params.offset = 8;
     }
 
     return params;
@@ -1273,7 +1333,7 @@ console.log('door side!', doorside, doorsector);
     var dt = ev.data;
 
     if (!this.level) return;
-    var playerdir = this.level.worldToLocal(normalized(V(player.dir.x, 0, player.dir.z)));
+    var playerdir = this.level.worldToLocal(this._tmpvec.set(player.dir.x, 0, player.dir.z).normalize()).normalize();
     var playerangle = Math.atan2(playerdir.z, playerdir.x);
     this.angle = playerangle;
     var automap = this.getAutomap();
@@ -1282,51 +1342,67 @@ console.log('door side!', doorside, doorsector);
     }
 
     if (!this.noclip && this.map) {
-      var playerpos = this.level.worldToLocal(V(player.pos.x, -player.pos.z, player.pos.y));
-      var playervel = this.level.worldToLocal(V(player.vel.x, -player.vel.z, player.vel.y)).multiplyScalar(dt).add(scalarMultiply(this.level.worldToLocal(normalized(V(player.vel.x, -player.vel.z, player.vel.y))), .5));
+      var playerpos = this.level.worldToLocal(this._tmpvec.set(player.pos.x, -player.pos.z, player.pos.y));
+playerpos.x = Math.round(playerpos.x);
+playerpos.y = Math.round(playerpos.y);
+playerpos.z = Math.round(playerpos.z);
+      //var playervel = this.level.worldToLocal(V(player.vel.x, -player.vel.z, player.vel.y)).multiplyScalar(dt).add(scalarMultiply(this.level.worldToLocal(normalized(V(player.vel.x, -player.vel.z, player.vel.y))), .5));
+      let nextpos = this.level.worldToLocal(this._tmpvec2.set(player.vel.x, -player.vel.z, player.vel.y).multiplyScalar(dt)).add(playerpos);
+      playervel = nextpos.clone().sub(playerpos); // allocation
       
-this.pos = this.level.worldToLocal(V(player.pos));
       var map = this.map;
       // Handle wall collisions
       var speed = playervel.length();
       if (speed > 1e-5) {
-        var intersections = map.getIntersections(new WadJS.Vertex(player.pos.x / this.level.scale.x, -player.pos.z / this.level.scale.z), scalarMultiply(playervel, 1 / speed), speed);
+        let intersections = map.getSphereIntersections(new WadJS.Vertex(playerpos.x, playerpos.y), playervel, this.radius); // allocation
         if (intersections.length > 0) {
           //console.log('boing!', intersections);
 
-          var intersection = intersections[0],
+          let intersection = intersections[0],
               seg = intersection[0],
               linedef = map.getLinedef(seg.linedef),
               side0 = map.getSidedef(linedef.side1),
               side1 = map.getSidedef(linedef.side2),
               sector0 = map.getSector(side0.sector),
-              sector1 = (side1 ? map.getSector(side1.sector) : false);
-        
-          var currentside = (seg.side == 0 ? side0 : side1);
-          var currentsector = (seg.side == 0 ? sector0 : sector1),
+              sector1 = (side1 ? map.getSector(side1.sector) : false),
+              v1 = map.getVertex(linedef.v1),
+              v2 = map.getVertex(linedef.v2),
+              currentside = (seg.side == 0 ? side0 : side1),
+              currentsector = (seg.side == 0 ? sector0 : sector1),
               othersector = (seg.side == 0 ? sector1 : sector0);
+
           //console.log(currentsector, othersector, side0, side1);
           if (!othersector || ((othersector.floorheight - playerpos.z > 24 || othersector.ceilingheight - playerpos.z - this.height < 0) && currentside.middletex != '-')) {
             // A wall is considered solid if:
             //  - there's nothing on the other side
             //  - the floor of the sector we're moving into is > 24 units high
-            player.pos = translate(player.pos, scalarMultiply(player.vel, -dt));
-            var v1 = map.getVertex(linedef.v1),
-                v2 = map.getVertex(linedef.v2);
-            var diff = V(v2.x - v1.x, 0, v2.y - v1.y);
-            var normal = normalized((seg.side == 0 ? V(diff.z, 0, -diff.x) : V(-diff.z, 0, diff.x)));
-            var dot = normal.dot(player.vel);
-            var speed = player.vel.length();
+            //let playerworldpos = this.level.localToWorld(V(playerpos));
+            //player.pos.set(playerworldpos.x, playerworldpos.z, -playerworldpos.y);
+            let diff = V(v2.x - v1.x, 0, v2.y - v1.y), // allocation
+                normal = (seg.side == 0 ? V(-diff.z, 0, diff.x).normalize() : V(diff.z, 0, -diff.x).normalize()), // allocation
+                speed = player.vel.length(),
+                dot = normal.dot(normalized(player.vel)); // allocation
+//console.log('boink', playerpos, playerdir, playervel, player.vel, normal, dot);
+
+//player.moveForce.force.set(0,0,0);
             // FIXME - need to calculate proper reflection force here, and push back against the player as long as they're in contact with the wall
-            //this.wallforce.update(scalarMultiply(normal, -dot * 100));
-            //player.vel = translate(player.vel, scalarMultiply(normal, -dot));
-          } else if (currentsector && othersector) {
-//console.log('traversed', currentsector, othersector, linedef, side0, side1);
-          } else {
-            //this.wallforce.update(V(0));
+            //this.wallforce.update(scalarMultiply(player.moveForce.force, -dot));
+//console.log('new wallforce', this.wallforce.force, player.moveForce.force);
+            player.vel = translate(player.vel, scalarMultiply(normal, -dot * speed)); // allocation
+playerpos.x = intersection[1].x;
+playerpos.z = -intersection[1].y;
+            let playerworldpos = this.level.localToWorld(V(playerpos)); // allocation
+            player.pos.x = playerworldpos.x;
+            player.pos.z = playerworldpos.z;
+
           }
         }
       }
+      this.pos = this.level.worldToLocal(V(player.pos)); // allocation
+let angle = -this.angle * 180 / Math.PI + 90;
+//console.log(angle);
+      this.rotation.y = angle;
+//console.log('wallforce', this.wallforce.force);
 
       // Handle height
       var currentsector = this.map.getSectorAt(player.pos.x / this.level.scale.x, -player.pos.z / this.level.scale.z);
@@ -1335,21 +1411,32 @@ this.pos = this.level.worldToLocal(V(player.pos));
       var newy = (playerheight * this.level.scale.y);
       var stepheight = 24 * this.level.scale.y;
       if (player.pos.y > newy) {
-        player.vel = translate(player.vel, scalarMultiply(V(0,-9.8,0), dt));
+        player.vel = translate(player.vel, scalarMultiply(V(0,-9.8 * 3,0), dt)); // Gravity is a magic number tuned to feel like the original game
+        if (this.playerOnGround) {
+          this.dropFromHeight = player.pos.y;
+        }
         this.playerOnGround = false;
         //player.pos.y = playerheight / 100 - 1;
       } else {
         //player.accel = V(0,0,0);
 //console.log(newy, playerheight);
-        this.playerOnGround = true;
+        if (!this.playerOnGround) {
+          let dropheight = (this.dropFromHeight - player.pos.y) / this.level.scale.y;
+          if (dropheight > 48) {
+            console.log('crunch!', dropheight);
+            this.level.playSound('DSOOF');
+          }
+        }
         if (player.pos.y < newy && newy - player.pos.y < stepheight) {
           player.pos.y = newy;
         } else if (playerheight == Infinity) {
           player.pos = translate(player.pos, scalarMultiply(player.vel, -dt));
           player.vel = V(0,0,0);
-        } else {
-          player.pos.y = newy;
+        } else if (this.playerOnGround) {
+          player.vel.y = 0;
+          player.pos.y = currentsector.floorheight * this.level.scale.y;
         }
+        this.playerOnGround = true;
       }
     }
   },
@@ -1398,116 +1485,61 @@ this.pos = this.level.worldToLocal(V(player.pos));
   onmouseup: function(ev) {
   }
 });
-room.registerElement('doomrocket', {
-});
 
-room.registerElement('doomsprite', {
+
+room.registerElement('doomthing_Generic', {
   sprite: null,
-  frame: 'A',
+  spriteframe: 'A',
   angle: 0,
-
-  textures: {},
-
-  createChildren() {
-    this.elapsedframetime = 0;
-    this.currentframe = 0;
-    this.spriteduh = this.sprite
-    this.billboard = 'y';
-    if (this.sprite) {
-      // TODO - register this sprite as an AssetImage, so we can use it via image_id
-      this.sprite.animate();
-      this.plane = this.createObject('Object', {
-        id: 'plane',
-        scale: V(this.sprite.canvas.width,this.sprite.canvas.height,1),
-        pos: V(0,28,0),
-        //image_id: this.sprite.id,
-        tex_linear: true,
-        cull_face: 'none',
-        pickable: false,
-        collidable: false,
-      });
-      this.advanceFrame(0);
-
-//setTimeout(() => {
-      //this.plane.objects['3d'].children[1].children[0].onBeforeRender = (renderer, scene, camera) => { this.draw(false, camera) };
-//}, 2000);
-    }
-  },
-  //onupdate() {
-    //this.draw();
-  //},
-  advanceFrame(elapsedframetime) {
-    if (elapsedframetime > 0 && this.distanceToSquared(player.pos) > 400) return; // FIXME - quick hack to reduce sprite processing
-
-    this.currentframe = (this.currentframe + 1) % this.frame.length;
-    this.draw(true);
-  },
-  draw(force, camera) {
-    if (!force && this.distanceToSquared(camera.position) > 400) return; // FIXME - quick hack to reduce sprite processing
-    var sprite = this.spriteduh;
-
-    if (sprite && this.plane) {
-      let camerapos = (camera ? camera.getWorldPosition(V()) : V(player.pos));
-      var angle = (sprite.frameHasAngles(this.frame[this.currentframe]) ? this.getAngleToViewer(camerapos) : 0);
-      var frameid = this.frame[this.currentframe] + angle;
-      var assetid = sprite.id + frameid;
-      if (this.plane.image_id != assetid) {
-        var canvas = sprite.frames[this.frame[this.currentframe]][angle].canvas;
-        if (!this.textures[assetid]) {
-          room.loadNewAsset('image', { id: assetid, canvas: canvas, tex_linear: false, hasalpha: true });
-          this.textures[assetid] = room.getAsset('image', assetid);
-        }
-        this.plane.image_id = assetid;
-        this.plane.scale.x = canvas.width;
-        this.plane.scale.y = canvas.height;
-        this.plane.pos.y = canvas.height / 2;
-      }
-    }
-    //this.zdir = player.dir;
-    //this.ydir = V(0,1,0);
-  },
-  getAngleToViewer(viewerpos) {
-    if (!this.parent) {
-      this.die();
-      return 1;
-    }
-    let ppos = this.parent.worldToLocal(viewerpos);
-    ppos.y = 0;
-
-    let dir = ppos.clone().normalize();
-    let angle = (Math.atan2(dir.x, dir.z) + Math.PI);
-    // Add 22.5 degrees to our angle so that the angle snap lines up with what we'd expect
-    angle += Math.PI/8;
-    // Normalize angle to 0 <= angle < 2 * Math.PI
-    if (angle >= 2 * Math.PI) {
-      angle -= 2 * Math.PI;
-    }
-
-    // Snap the angle to the closest 45 degree increment, and get the index for the angle
-    let snapangle = Math.floor((angle) / (Math.PI/4)) + 1;
-    
-    return snapangle;
-  }
-});
-room.registerElement('doomsprite2', {
-  sprite: null,
-  frame: 'A',
-  angle: 0,
+  statemachine: null,
+  map: null,
+  type: null,
+  spritename: '',
+  height: 20,
+  radius: 16,
+  artifact: false,
+  pickup: false,
+  weapon: false,
+  monster: false,
+  obstacle: false,
+  shootable: false,
+  hanging: false,
+  hitpoints: 0,
+  maxdist: 20,
 
   textures: {},
 
   _tmpvec: V(),
+  _tmpvec2: V(),
+  create() {
+    this.createSprite();
+//console.log('create sprite', this, this.createLight);
+    if (this.createLight) {
+      this.createLight();
+    }
+    if (this.height && this.radius && (this.obstacle || this.shootable || this.pickup)) {
+      this.setCollider('cylinder', {height: this.height, radius: this.radius, offset: new THREE.Vector3(0, this.height / 2, 0)});
+      if (!this.obstacle) {
+        this.collision_trigger = true;
+        this.collidable = false;
+      }
+      this.addEventListener('physics_collide', (ev) => console.log(this, ev));
+    }
 
-  createChildren() {
+  },
+
+  createSprite() {
+    let spritedef = this.map.wad.getSprite(this.spritename);
     this.elapsedframetime = 0;
     this.currentframe = 0;
-    this.spriteduh = this.sprite
-    this.billboard = 'y';
-    if (this.sprite) {
+    if (spritedef) {
+      this.sprite = spritedef;
       // TODO - register this sprite as an AssetImage, so we can use it via image_id
+//console.log('new sprite', this.spritename, spritedef, this);
       this.plane = this.createObject('Object', {
         id: 'plane',
         //scale: V(this.sprite.canvas.width,this.sprite.canvas.height,1),
+        billboard: 'y',
         pos: V(0,28,0),
         //image_id: this.sprite.id,
         tex_linear: true,
@@ -1530,23 +1562,30 @@ room.registerElement('doomsprite2', {
     //this.draw();
   //},
   advanceFrame(elapsedframetime) {
-    if (elapsedframetime > 0 && this.distanceTo(player) > 20) return; // FIXME - quick hack to reduce sprite processing
+    if (elapsedframetime > 0 && this.distanceToSquared(player) > this.maxdist * this.maxdist) return; // FIXME - quick hack to reduce sprite processing
 
-    this.currentframe = (this.currentframe + 1) % this.frame.length;
+if (this.debugme) debugger;
+    if (isNaN(this.currentframe)) this.currentframe = 0;
+    this.currentframe = (this.currentframe + 1) % this.spriteframe.length;
+
+    if (this.updateLight) {
+      this.updateLight();
+    }
     this.draw(true);
   },
   draw(force, camera) {
-    if (!force && this.distanceTo(camera.position) > 20) return; // FIXME - quick hack to reduce sprite processing
-    let sprite = this.spriteduh,
+    if (!force && camera && this.distanceToSquared(camera.position) > this.maxdist * this.maxdist) return; // FIXME - quick hack to reduce sprite processing
+    let sprite = this.sprite,
         tmpvec = this._tmpvec;
 
     if (sprite && this.plane) {
-      let camerapos = (camera ? camera.getWorldPosition(tmpvec.set(0,0,0)) : tmpvec.copy(player.pos));
-      let angle = (sprite.frameHasAngles(this.frame[this.currentframe]) ? this.getAngleToViewer(camerapos) : 0);
+      if (!camera) camera = player.camera;
+      let camerapos = camera.getWorldPosition(tmpvec.set(0,0,0));
+      let angle = (sprite.frameHasAngles(this.spriteframe[this.currentframe]) ? this.getAngleToViewer(camerapos) : 0);
 /*
       var frameid = this.frame[this.currentframe] + angle;
 */
-      let frame = sprite.frames[this.frame[this.currentframe]][angle];
+      let frame = sprite.frames[this.spriteframe[this.currentframe]][angle];
       let assetid = sprite.id + '_sheet';
       if (this.plane.image_id != assetid) {
         let canvas = sprite.getSpriteSheet();
@@ -1557,12 +1596,12 @@ room.registerElement('doomsprite2', {
         }
         this.plane.image_id = assetid;
       }
-      let offset = sprite.getSpriteSheetFrame(this.frame[this.currentframe], angle);
+      let offset = sprite.getSpriteSheetFrame(this.spriteframe[this.currentframe], angle);
       this.plane.scale.x = frame.width;
       this.plane.scale.y = frame.height;
       this.plane.pos.y = frame.height / 2;
-      this.plane.texture_repeat.set(offset[2], offset[3]);
       this.plane.texture_offset.set(offset[0], offset[1]);
+      this.plane.texture_repeat.set(offset[2], offset[3]);
       this.plane.updateTextureOffsets();
 //console.log(this.frame[this.currentframe], angle, this.plane.texture_offset);
     }
@@ -1570,14 +1609,11 @@ room.registerElement('doomsprite2', {
     //this.ydir = V(0,1,0);
   },
   getAngleToViewer(viewerpos) {
-    if (!this.parent) {
-      this.die();
-      return 1;
-    }
-    let ppos = this.parent.worldToLocal(viewerpos);
+    let tmpvec = this._tmpvec2;
+    let ppos = this.worldToLocal(viewerpos);
     ppos.y = 0;
 
-    let dir = ppos.clone().normalize();
+    let dir = tmpvec.copy(ppos).normalize();
     let angle = (Math.atan2(dir.x, dir.z) + Math.PI);
     // Add 22.5 degrees to our angle so that the angle snap lines up with what we'd expect
     angle += Math.PI/8;
@@ -1593,83 +1629,6 @@ room.registerElement('doomsprite2', {
   }
 });
 room.registerElement('doomdoor', {
-});
-room.registerElement('doomthing_Generic', {
-  statemachine: null,
-  map: null,
-  type: null,
-  spritename: '',
-  spriteframe: 'A',
-  height: 20,
-  radius: 16,
-  artifact: false,
-  pickup: false,
-  weapon: false,
-  monster: false,
-  obstacle: false,
-  shootable: false,
-  hanging: false,
-  hitpoints: 0,
-  
-
-  create() {
-    if (this.type) {
-      //this.actor = this.statemachine.create(this.type);
-    }
-    this.createSprite();
-  },
-  createSprite() {
-    if (this.spritename) {
-      this.sprite = this.createObject('doomsprite2', {
-        sprite: this.map.wad.getSprite(this.spritename),
-        frame: this.spriteframe,
-        pickable: false,
-        collidable: false,
-      });
-    }
-/*
-    this.pointer = this.createObject('object', {
-      id: 'cone',
-      scale: V(5,50,5),
-      rotation: V(-90,0,0),
-      pos: V(0,25,0),
-      col: 'red'
-    });
-*/
-/*
-    if (this.height && this.radius && (this.obstacle || this.shootable || this.pickup)) {
-      this.setCollider('cylinder', {height: this.height, radius: this.radius, offset: new THREE.Vector3(0, this.height / 2, 0)});
-      if (!this.obstacle) {
-        this.collision_trigger = true;
-        this.collidable = false;
-      }
-      this.addEventListener('physics_collide', (ev) => console.log(this, ev));
-    }
-*/
-    //this.collision_scale = V(24,48,24);
-    //this.collision_id = 'cylinder';
-  },
-  advanceFrame(frametime) {
-    if (this.sprite) {
-      this.sprite.advanceFrame(frametime);
-    }
-  },
-  playSound(name) {
-    if (this.map.wad.sounds[name]) {
-      let sound = this.map.wad.sounds[name];
-      let audio = player.ears.children[0].context;
-      var buffer = audio.createBuffer(1, sound.samples, sound.rate);
-      buffer.getChannelData(0).set(sound.pcm);
-
-      var source = audio.createBufferSource();
-      source.buffer = buffer;
-      source.connect(audio.destination);
-      source.start(0);
-    }
-  },
-  oncollide(ev) {
-    console.log('oh boing', this, ev);
-  }
 });
 
 // Artifacts
@@ -2079,8 +2038,7 @@ room.extendElement('doomthing_Generic', 'doomthing_Barrel', {
   shootable: true,
   obstacle: true,
   hitpoints: 500,
-  create() {
-    this.createSprite();
+  createLight() {
     if (settings.thinglights) {
       this.light = this.createObject('light', {
         col: V(0,1,0),
@@ -2095,12 +2053,9 @@ room.extendElement('doomthing_Generic', 'doomthing_Barrel', {
       });
     }
   },
-  advanceFrame(frametime) {
+  updateLight(frametime) {
     if (this.light) {
       this.light.light_intensity = 4 + Math.random() * 2;
-    }
-    if (this.sprite) {
-      this.sprite.advanceFrame(frametime);
     }
   },
 });
@@ -2124,8 +2079,7 @@ room.extendElement('doomthing_Generic', 'doomthing_Candelabra', {
   height: 16,
   radius: 16,
   obstacle: true,
-  create() {
-    this.createSprite();
+  createLight() {
     if (settings.thinglights) {
       this.light = this.createObject('light', {
         col: V(1,1,0),
@@ -2136,12 +2090,9 @@ room.extendElement('doomthing_Generic', 'doomthing_Candelabra', {
       });
     }
   },
-  advanceFrame(frametime) {
+  updateLight() {
     if (this.light) {
       this.light.light_intensity = 4 + Math.random() * 4;
-    }
-    if (this.sprite) {
-      this.sprite.advanceFrame(frametime);
     }
   },
 });
@@ -2172,8 +2123,7 @@ room.extendElement('doomthing_Generic', 'doomthing_FloorLamp', {
   height: 16,
   radius: 16,
   obstacle: true,
-  create() {
-    this.createSprite();
+  createLight() {
     if (settings.thinglights) {
       this.light = this.createObject('light', {
         col: V(1,1,.9),
@@ -2402,8 +2352,7 @@ room.extendElement('doomthing_Generic', 'doomthing_TallTechnoPillar', {
   radius: 16,
   obstacle: true,
 
-  create() {
-    this.createSprite();
+  createLight() {
     if (settings.thinglights) {
       this.light = this.createObject('light', {
         col: V(1,1,1),
@@ -2414,7 +2363,7 @@ room.extendElement('doomthing_Generic', 'doomthing_TallTechnoPillar', {
       });
     }
   },
-  advanceFrame(frametime) {
+  updateLight() {
     if (this.light) {
       this.light.light_intensity = 10 + 2 * (Math.sin(new Date().getTime() / 500) + 1);
     }
@@ -2521,12 +2470,13 @@ room.extendElement('doomthing_Generic', 'doomthing_TeleportLanding', {
 room.extendElement('doomthing_Generic', 'doomthing_Missile', {
   spritename: 'MISL',
   spriteframe: 'A',
+  maxdist: Infinity,
 
   dir: V(),
   speed: 512,
   radius: 2,
 
-  createChildren: function() {
+  createLight() {
     this.active = false;
 
     this.light = this.createObject('light', {
@@ -2541,7 +2491,7 @@ room.extendElement('doomthing_Generic', 'doomthing_Missile', {
     //this.setCollider('sphere', {radius: this.radius, offset: new THREE.Vector3(0, 24, 0)});
     //this.addEventListener('collision', (ev) => this.explode());
   },
-  fire: function(pos, dir) {
+  fire(pos, dir) {
     this.pos = translate(pos, V(0,24,0));
     this.ydir = V(0,1,0);
     this.zdir = dir;
@@ -2552,6 +2502,7 @@ room.extendElement('doomthing_Generic', 'doomthing_Missile', {
       this.map = this.parent.mapdata;
     }
 
+/*
     if (!this.sprite) {
       this.sprite = this.createObject('doomsprite2', {
         sprite: this.map.wad.getSprite(this.spritename),
@@ -2559,32 +2510,32 @@ room.extendElement('doomthing_Generic', 'doomthing_Missile', {
         depth_write: false,
       });
       this.parent.things.push(this);
+*/
 
+    //}
       //this.parent.things.push(this.sprite);
-    }
-    this.spriteframe = 'A';
-    this.sprite.frame = 'A';
-    this.sprite.pos.y = 0;
+    //this.spriteframe = 'A';
+    //this.plane.pos.y = 0;
     this.active = true;
     this.visible = true;
     this.light.light_intensity = 6;
     this.light.col = V(1,.7,0);
     this.collidable = true;
     this.pickable = false;
-    this.sprite.draw(true);
+    this.spriteframe = 'A';
+    this.currentframe = 0;
+    this.draw(true);
     this.createObject('sound', { id: 'DSRLAUNC', pos: V(0), gain: 1, singleshot: true});
   },
 
   onupdate() {
-    if (this.sprite) {
 //console.log(this.sprite.getAngleToViewer(player.pos), this.zdir, this.xdir, this.ydir);
-      this.sprite.draw(true);
-    }
+    this.draw(true);
     if (this.active) {
       let hits = this.raycast();
       for (let i = 0; i < hits.length; i++) {
         let hit = hits[i];
-        if (hit.distance < this.radius) {
+        if (hit.object && hit.object.obstacle && hit.distance < this.radius) {
           this.explode(hit.object);
           break;
         }
@@ -2597,11 +2548,12 @@ room.extendElement('doomthing_Generic', 'doomthing_Missile', {
     this.collidable = false;
     this.vel = V(0,0.001,0);
     this.spriteframe = 'BCD';
-    this.sprite.frame = 'B';
-    this.sprite.currentframe = 0;
-    this.sprite.draw(true);
-    this.sprite.pos.y = -24;
-    this.active = false;
+this.currentframe = 0;
+    //this.sprite.frame = 'B';
+    //this.sprite.currentframe = 0;
+    //this.sprite.draw(true);
+    //this.plane.pos.y = -24;
+    //this.active = false;
     this.light.light_intensity = 16;
     this.light.col = V(.5,0,0);
     //this.level.playSound('DSBAREXP', 100, this.getWorldPosition());
@@ -2622,29 +2574,37 @@ room.extendElement('doomthing_Generic', 'doomthing_Missile', {
     // TODO - apply area-effect damage
 
   },
-  advanceFrame(frametime) {
-    if (this.sprite) {
-      if (this.sprite.frame == 'A') {
-        this.sprite.pos.y  = 0;
-      } else if (this.sprite.frame == 'B') {
-        this.sprite.frame = 'C';
+  updateLight() {
+    let frame = this.spriteframe[this.currentframe];
+
+    if (this.light) {
+      if (frame == 'A') {
+this.currentframe = 0;
+        //this.plane.pos.y  = 0;
+      } else if (frame == 'B') {
+this.currentframe = 0;
+        //this.frame = 'C';
         this.light.light_intensity = 12;
-      } else if (this.sprite.frame == 'C') {
-        this.sprite.frame = 'D';
+      } else if (frame == 'C') {
+        //this.frame = 'D';
+this.currentframe = 1;
         this.light.light_intensity = 8;
-      } else if (this.sprite.frame == 'D') {
-        this.visible = false;
+      } else if (frame == 'D') {
+        //this.visible = false;
         this.pos.y = -9999;
       }
-      this.sprite.advanceFrame(frametime);
+this.draw(true);
     }
   },
 });
 //room.require('linesegments').then(() => {
   elation.template.add('doomdebugger', `
     <doom-assets-button></doom-assets-button>
-    <doom-debugger-map id="doomdebuggermap"></doom-debugger-map>
-    <doom-debugger-sector id="doomdebuggersector"></doom-debugger-sector>
+    <div class="debuggergrid">
+      <doom-debugger-map id="doomdebuggermap"></doom-debugger-map>
+      <doom-debugger-sector id="doomdebuggersector"></doom-debugger-sector>
+      <doom-debugger-linedef id="doomdebuggerlinedef"></doom-debugger-linedef>
+    </div>
   `);
   elation.template.add('doomdebugger.map', `
     <h1>{level}</h1>
@@ -2661,25 +2621,38 @@ room.extendElement('doomthing_Generic', 'doomthing_Missile', {
       <li>
         <h3>Ceiling:</h3>
         <ul>
-          <li>Texture: {sector.ceilingpic}<doom-debugger-texture-preview id="ceilingtexture" name="{sector.ceilingpic}"></doom-debugger-texture-preview></li>
+          <li>Texture: {sector.ceilingpic}</li>
+          <li><doom-debugger-texture-preview id="ceilingtexture" name="{sector.ceilingpic}"></doom-debugger-texture-preview></li>
           <li>Height:{sector.ceilingheight}
         </ul>
       </li>
       <li>
         <h3>Floor:</h3>
         <ul>
-          <li>Texture: {sector.floorpic}<doom-debugger-texture-preview id="floortexture" name="{sector.floorpic}"></doom-debugger-texture-preview></li>
+          <li>Texture: {sector.floorpic}</li>
+          <li><doom-debugger-texture-preview id="floortexture" name="{sector.floorpic}"></doom-debugger-texture-preview></li>
           <li>Height: {sector.floorheight}</li>
         </ul>
       </li>
       <li><h3>Light: {sector.lightlevel}</h3></li>
+      <li><h3>Tag: {sector.tag}</h3></li>
     </ul> 
+  `);
+  elation.template.add('doomdebugger.linedef', `
     {?linedef}
-      <h1>Linedef {linedef.v1} {linedef.v2}</h1>
+      <h1>Linedef {linedefnum}</h1>
+      <ul>
+        <li>v1: {linedef.v1} ({v1.x}, {v1.y})</li>
+        <li>v2: {linedef.v2} ({v2.x}, {v2.y})</li>
+        <li>flags: {linedef.flags}</li>
+        <li>type: {linedef.type}</li>
+        <li>tag: {linedef.tag}</li>
+      </ul>
     {/linedef}
   `);
   elation.elements.define('doom-debugger-map', class extends elation.elements.base { });
   elation.elements.define('doom-debugger-sector', class extends elation.elements.base { });
+  elation.elements.define('doom-debugger-linedef', class extends elation.elements.base { });
   elation.elements.define('doom-debugger-texture-preview', class extends elation.elements.base {
     init() {
       this.defineAttributes({
@@ -2745,6 +2718,7 @@ room.extendElement('doomthing_Generic', 'doomthing_Missile', {
           sector: false,
           linedef: false,
           vertex: false,
+          linedefnum: -1,
         };
         for (let i = 0; i < hits.length; i++) {
           if (!data.sector && hits[i].object.tag == 'DOOMLEVEL') {
@@ -2767,8 +2741,58 @@ room.extendElement('doomthing_Generic', 'doomthing_Missile', {
               }
             }
           } else if (!data.linedef && hits[i].object.tag == 'LINESEGMENTS') {
-            let line = hits[i].object.getLine(hits[i].index);
+            let linedef = hits[i].object.getMetadata(hits[i].index);
+            if (linedef && !data.linedef) {
+              data.linedef = linedef;
+              data.linedefnum = data.map.linedefs.indexOf(linedef);
+            }
           }
+        }
+        
+        if (data.linedef) {
+if (!this.wireframe_linedef) {
+      this.wireframe_linedef = this.createObject('linesegments', {
+        positions: [],
+        colors: [],
+        depth_test: false,
+        depth_write: true,
+        opacity: .5,
+        //scale: V(1000)
+        pickable: false,
+        collidable: false,
+        linewidth: 5,
+      });
+}
+if (this.wireframe_linedef) {
+          let map = doomplayer.map,
+              v1 = map.getVertex(data.linedef.v1),
+              v2 = map.getVertex(data.linedef.v2);
+          let floor1 = V(v1.x, data.sector.floorheight, -v1.y),
+              floor2 = V(v2.x, data.sector.floorheight, -v2.y),
+              ceil1 = V(v1.x, data.sector.ceilingheight, -v1.y),
+              ceil2 = V(v2.x, data.sector.ceilingheight, -v2.y);
+          let color = V(0, 1, 0);
+          this.wireframe_linedef.positions[0] = floor1;
+          this.wireframe_linedef.positions[1] = floor2;
+          this.wireframe_linedef.positions[2] = ceil1;
+          this.wireframe_linedef.positions[3] = ceil2;
+          this.wireframe_linedef.colors[0] = color;
+          this.wireframe_linedef.colors[1] = color;
+          this.wireframe_linedef.colors[2] = color;
+          this.wireframe_linedef.colors[3] = color;
+          this.wireframe_linedef.updateLine();
+          data.v1 = v1;
+          data.v2 = v2;
+        } else {
+          this.wireframe_linedef.positions[0].set(0,-999,0);
+          this.wireframe_linedef.positions[1].set(0,-999,0);
+          this.wireframe_linedef.positions[2].set(0,-999,0);
+          this.wireframe_linedef.positions[3].set(0,-999,0);
+          this.wireframe_linedef.updateLine();
+        }
+}
+        if (this.debugelements.doomdebuggerlinedef && data.linedef) { 
+          this.debugelements.doomdebuggerlinedef.innerHTML = elation.template.get('doomdebugger.linedef', data);
         }
 /*
         if (this.currentsector) {
@@ -2799,7 +2823,7 @@ room.extendElement('doomthing_Generic', 'doomthing_Missile', {
           level: this.doomplayer.level,
           sector: sector,
           lighting: false,
-          js_id: 'doomdebugger_sector_' + sector.id,
+          js_id: 'doomdebugger_sector_' + this.doomplayer.level.map + '_' + sector.id,
           //pos: this.worldToLocal(V(player.cursor_pos)),
         });
       } else {
@@ -2824,6 +2848,7 @@ room.extendElement('doomthing_Generic', 'doomthing_Missile', {
 
       let linedefpoints = [],
           linedefcolors = [],
+          linedefmeta = [],
           verts = {};
       for (let i = 0; i < linedefs.length; i++) {
         let linedef = linedefs[i],
@@ -2861,6 +2886,7 @@ room.extendElement('doomthing_Generic', 'doomthing_Missile', {
         linedefpoints.push(ceilmid, ceiltick);
 
         linedefcolors.push(linedefcolor, linedefcolor, linedefcolor, linedefcolor, linedefcolor, linedefcolor, linedefcolor, linedefcolor);
+        linedefmeta.push(linedef, linedef, linedef, linedef, linedef, linedef, linedef, linedef);
       }
 
       let vertpoints = [];
@@ -2874,6 +2900,7 @@ room.extendElement('doomthing_Generic', 'doomthing_Missile', {
 
         linedefpoints.push(floor, ceil);
         linedefcolors.push(V(.3), V(.3));
+        linedefmeta.push(null, null);
         centerpoint.add(floor);
       }
       centerpoint.divideScalar(vertpoints.length);
@@ -2892,6 +2919,7 @@ room.extendElement('doomthing_Generic', 'doomthing_Missile', {
       this.wireframe_clipped = this.createObject('linesegments', {
         positions: linedefpoints,
         colors: linedefcolors,
+        metadata: linedefmeta,
         depth_test: true,
         depth_write: true,
         opacity: 1,

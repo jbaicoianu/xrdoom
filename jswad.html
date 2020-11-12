@@ -14,9 +14,10 @@ foo.load('DOOM.WAD').then((wad) => {
   <assets>
     <AssetScript src="doomlevel.js" />
   </assets>
-  <room pos="10.65 -1.2 36.1" shadows="true">
-    <DoomLevel wad="DOOM.WAD" map="E1M1" scale=".01 .01 .01" />
+  <room pos="10.65 0 36.1" shadows="true" ambient=".8 .8 .8">
+    <!-- DoomLevel wad="DOOM.WAD" map="E2M2" scale=".0328 .0328 .0328" / -->
+    <DoomLevel wad="DOOM2.WAD" map="MAP01" scale=".0328 .0328 .0328" />
   </room>
 </fireboxroom>
-<script src="https://web.janusvr.com/janusweb.js"></script>
+<script src="https://baicoianu.com/~bai/janusweb/build/janusweb.js"></script>
 <script>elation.janusweb.init()</script>
