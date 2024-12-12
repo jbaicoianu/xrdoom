@@ -6,6 +6,7 @@ elation.elements.define('doom.client', class extends elation.elements.janus.view
     super.init();
     this.defineAttributes({
       wadsrc: { type: 'string', default: 'DOOMSW.WAD' },
+      pwad: { type: 'string', default: '' },
       musicpath: { type: 'string' },
       map: { type: 'string' }
     });
@@ -21,9 +22,9 @@ elation.elements.define('doom.client', class extends elation.elements.janus.view
     let callback = (client) => {
       elation.events.add(client.janusweb.currentroom, 'room_load_complete', () => {
         this.level = client.janusweb.currentroom.jsobjects['doomlevel'];
-        this.wad = this.level.wadfile;
+        this.wad = this.level.wads;
         this.player = this.level.doomplayer;
-        elation.events.fire({target: this, type: 'load'});
+        elation.events.fire({target: this, type: 'doom_client_load'});
       });
     };
     if (this.autostart && this.autostart != 'false') {
@@ -38,7 +39,7 @@ elation.elements.define('doom.client', class extends elation.elements.janus.view
     }
   }
   getRoomURL() {
-    return 'data:text/html,' + encodeURIComponent('<title>WebVR Doom | E1M1</title><fireboxroom><assets><AssetScript src="https://baicoianu.com/~bai/doom/doomlevel.js" /></assets><room require="linesegments" pos="10.65 0 36.1" shadows="true" pbr="false" ambient=".8 .8 .8" walk_speed="8" run_speed="10" xdir="-1 0 0" zdir="0 0 -1" defaultlights="false" rate="40"><DoomLevel js_id="doomlevel" wad="' + this.wadsrc + '"' + (this.pwad ? ' pwad="' + this.pwad + '"' : '') + (this.musicpath ? ' musicpath="' + this.musicpath + '"' : '') + ' map="' + (this.map || 'E1M1') + '" scale=".0328 .0328 .0328" fog="true" fog_col="0 0 0" fog_density=".05" selfavatar="false"/><object id="sphere" pos="0 -9999 0" rotate_deg_per_sec="1" /></room></fireboxroom>');
+    return 'data:text/html,' + encodeURIComponent('<title>WebVR Doom | E1M1</title><fireboxroom><assets><AssetScript src="https://baicoianu.com/~bai/doom/doomlevel.js" /></assets><room require="objectpool" pos="10.65 0 36.1" shadows="true" ambient=".8 .8 .8" walk_speed="8" run_speed="10" xdir="-1 0 0" zdir="0 0 -1" defaultlights="false" rate="40" skybox_top_id="black" skybox_bottom_id="black" skybox_front_id="black" skybox_back_id="black" skybox_left_id="black" skybox_right_id="black" fog="true" fog_mode="exp2" fog_col="0 0 0" fog_density=".05"><DoomLevel js_id="doomlevel" wad="' + this.wadsrc + '"' + (this.pwad ? ' pwad="' + this.pwad + '"' : '') + (this.musicpath ? ' musicpath="' + this.musicpath + '"' : '') + ' map="' + (this.map || 'E1M1') + '" scale=".0328 .0328 .0328" selfavatar="false"/><object id="sphere" pos="0 -9999 0" rotate_deg_per_sec="1" /></room></fireboxroom>');
   }
 });
 
@@ -53,7 +54,8 @@ elation.elements.define('doom.base', class extends elation.elements.base {
       while (el) {
         if (el instanceof elation.elements.doom.client) {
           this.client = el;
-          this.wad = el.wad;
+          if (el.wad != 'undefined') 
+            this.wad = el.wad;
 
           break;
         }
@@ -64,7 +66,8 @@ elation.elements.define('doom.base', class extends elation.elements.base {
       let client = document.querySelector('doom-client');
       if (client) {
         this.client = client;
-        this.wad = client.wad;
+        if (client.wad != 'undefined')
+          this.wad = client.wad;
       }
     }
     return this.wad;
@@ -499,6 +502,10 @@ console.log('has textures', textures);
 
       var texturelist = [];
       for (var k in textures) {
+        if (!textures[k].canvas) {
+          var palette = wad.iwad.getPalette(0);
+          textures[k].loadTexture(palette, wad.getPatches());
+        }
         texturelist.push(textures[k]);
       }
       this.texturelist = elation.elements.create('ui-grid', {
@@ -618,7 +625,14 @@ console.log('make sprite viewer');
 
       var assetlist = [];
       for (var k in assets) {
+        let sprite = assets[k];
         assetlist.push(assets[k]);
+        let frameid = Object.keys(sprite.frames)[0];
+        let angle = (sprite.frameHasAngles(frameid) ? 1 : 0);
+        sprite.setActiveFrame(frameid);
+        sprite.setActiveAngle(angle);
+        sprite.getSpriteSheet();
+        sprite.getSpriteSheetFrame(frameid, angle);
       }
       this.assetgrid = elation.elements.create('ui-grid', {
         append: this,
@@ -656,7 +670,8 @@ elation.elements.define('doom.assets.sprite', class extends elation.elements.bas
     if (this.value.canvas) {
       this.canvaspanel.appendChild(this.value.canvas);
     }
-    this.setActiveFrame('A');
+    let frameid = Object.keys(this.value.frames)[0];
+    this.setActiveFrame(frameid);
     elation.events.add(this, 'mouseover', () => this.startAnimation());
     elation.events.add(this, 'mouseout', () => this.stopAnimation());
   }
@@ -807,7 +822,7 @@ elation.elements.define('doom.assets.sound', class extends elation.elements.ui.i
       label: '▶',
       title: 'Play'
     });
-    this.button.addEventListener('click', (ev) => this.play());
+    this.button.addEventListener('click', (ev) => this.play(ev.shiftKey));
 /*
     this.buttonreverse = elation.elements.create('ui.button', {
       append: this.canvaspanel,

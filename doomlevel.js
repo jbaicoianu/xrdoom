@@ -9,7 +9,7 @@ room.registerElement('doomlevel', {
   pwad: '',
   map: 'E1M1',
   musicpath: 'https://spispopd.lol/music/doom/',
-  showthings: true,
+  showthings: false,
   obstacle: true,
   thingdefs: {},
 
@@ -26,24 +26,29 @@ room.registerElement('doomlevel', {
     });
 */
 
-    this.things = [];
     this.initializeThings();
 
+    this.transition = player.createObject('doomtransition', { pos: V(-1.05, 0.7, -1), scale: V(2.1, 1.5, 1) }); // FIXME - should center based on screen resolution, etc
+
+    this.wads = new WadJS.WadGroup();
+    this.loadWads();
+
+  },
+  async loadWads() {
     try {
-      this.loader = new WadJS.WadFile();
-      this.loader.load(this.wad).then((wad) => {
-        this.wadfile = wad;
-        this.doomplayer = this.createObject('doomplayer', {wad: this.wadfile, map: { wad: this.wadfile }, /*collision_id: 'sphere', collision_scale: V(24),*/ autosync: true, js_id: player.getUsername() + '_avatar'});
-        if (this.pwad) {
-          this.loader.load(this.pwad).then((pwad) => {
-            //this.setPWAD(pwad);
-            this.loadMap(this.map);
-          });
-        } else {
-          this.loadMap(this.map);
+      let wad = await this.wads.load(this.wad);
+      if (this.pwad) {
+        let pwads = this.pwad.split(' ');
+        for (let i = 0; i < pwads.length; i++) {
+          await this.wads.load(pwads[i]);
         }
-        this.sounds = this.wadfile.getSounds();
-        let audio = player.ears.children[0].context;
+      }
+      this.doomplayer = this.createObject('doomplayer', {wad: this.wads, map: { wad: this.wads }, /*collision_id: 'sphere', collision_scale: V(24),*/ autosync: true, js_id: player.getUsername() + '_avatar'});
+      this.loadMap(this.map);
+      this.sounds = this.wads.getSounds();
+      this.engine.systems.sound.getRealListenerAsync().then(listener => {
+        let audio = listener.context;
+console.log(listener, audio);
         for (let k in this.sounds) {
           let sound = this.sounds[k];
           //console.log('register room sound', k, sound);
@@ -211,6 +216,8 @@ room.registerElement('doomlevel', {
 
   },
   loadMap: function(mapname) {
+    this.transition.reset();
+
     if (this.currentmap && this.currentmap.parent) {
       this.currentmap.parent.remove(this.currentmap);
 
@@ -220,7 +227,32 @@ room.registerElement('doomlevel', {
       if (this.debug) {
         this.debug.die();
       }
+    }
+console.log('spawn new map', this, mapname);
+    this.currentmap = this.createObject('doomlevel-map', {
+      wads: this.wads,
+      mapname: mapname,
+    });
+    this.currentmap.addEventListener('mapload', ev => {
+      this.doomplayer.setLevel(ev.target);
+      this.transition.begin();
+    });
+  }
+});
+room.registerElement('doomlevel-map', {
+  map: null,
+  mapname: '',
+  wads: null,
+  depth_write: true,
+  depth_test: true,
+  showceilings: true,
 
+  create() {
+    this.things = [];
+    this.load();
+  },
+  load() {
+/*
       this.stopMusic();
       if (this.things) {
         for (let i = 0; i < this.things.length; i++) {
@@ -233,16 +265,17 @@ room.registerElement('doomlevel', {
         }
       }
     }
+*/
     var currentmap = this.currentmap = new THREE.Object3D();
-    var wad = this.wadfile;
+    var wad = this.wads;
 
-    this.mapnum = this.parseMapName(mapname);
+    this.mapnum = this.parseMapName(this.mapname);
 
-    var map = wad.getMap(mapname);
-    this.map = mapname;
+    var map = (this.map ? this.map : wad.getMap(this.mapname));
+    //this.map = mapname;
     this.mapdata = map;
 
-    this.doomplayer.setLevel(this);
+    //this.parent.doomplayer.setLevel(this);
 
     var textures = wad.getTextures();
     var geometries = map.getGeometry();
@@ -271,10 +304,13 @@ room.registerElement('doomlevel', {
       geo.computeVertexNormals();
 
       var mat = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(-Math.PI/2, 0, 0));
-      geo.applyMatrix(mat);
+      geo.applyMatrix4(mat);
 
       var texture = null;
       if (textures[k.toLowerCase()]) {
+        if (!textures[k.toLowerCase()].canvas) {
+          textures[k.toLowerCase()].loadTexture(wad.getPalette(), wad.getPatches());
+        }
         texture = new THREE.Texture(textures[k.toLowerCase()].getPOT());
         if (texture.image) texture.needsUpdate = true;
         texture.wrapS = THREE.RepeatWrapping;
@@ -282,21 +318,29 @@ room.registerElement('doomlevel', {
         texture.minFilter = THREE.NearestFilter;
         texture.magFilter = THREE.NearestFilter;
       }
-      var mat = new THREE.MeshPhongMaterial({
+      var mat = new THREE.MeshPhysicalMaterial({
         color: 0xffffff,
-        //side: THREE.DoubleSide,
-        roughness: 0.8,
+        side: THREE.DoubleSide,
+        roughness: .9,
+				specularIntensity: 0,
+				specularColor: new THREE.Color('black'),
         map: texture,
         transparent: (textures[k.toLowerCase()] ? textures[k.toLowerCase()].transparent : false),
-        vertexColors: THREE.VertexColors
+        vertexColors: THREE.VertexColors,
+        depthWrite: (this.depth_write === null ? true : this.depth_write),
+        depthTest: (this.depth_test === null ? true : this.depth_test),
+        name: k,
       });
       var mesh = new THREE.Mesh(geo, mat);
       mesh.name = 'sector-' + k + '-walls';
       mesh.castShadow = true;
       mesh.receiveShadow = true;
+      mesh.renderOrder = this.renderorder;
+/*
       if (mat.transparent) {
         mesh.renderOrder = 999;
       }
+*/
       currentmap.add(mesh);
 
       var collidermesh = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({color: 0xffff00, opacity: .2, transparent: true, side: THREE.DoubleSide}));
@@ -320,6 +364,10 @@ room.registerElement('doomlevel', {
     let sectorshapes = this.getSectorShapes(map);
     for (let i = 0; i < sectorshapes.length; i++) {
 if (restrictsectors && restrictsectors.indexOf(i) == -1) continue;
+      if (!sectorshapes[i]) {
+        console.warn('Sectorshape ' + i + ' is empty', sectorshapes);
+        continue;
+      }
       var sector = map.getSector(i);
       let vertexlist = sectorshapes[i].vertexlist.slice(0);
       var hasfloor = sector.floorpic != '-';
@@ -338,12 +386,14 @@ if (restrictsectors && restrictsectors.indexOf(i) == -1) continue;
       var newceilingverts = [],
           newceilingcolors = [];
       var floorverts = [];
-      for (var j = 0; j < vertexlist.length; j++) {
-        if (hasfloor) {
+      if (hasfloor) {
+        for (let j = 0; j < vertexlist.length; j++) {
           floorverts.push(vertexlist[j].x, vertexlist[j].y, sector.floorheight);
         }
-        if (hasceiling) {
-          newceilingverts.push(vertexlist[j].x, vertexlist[j].y, sector.ceilingheight);
+      }
+      if (hasceiling) {
+        for (let j = vertexlist.length - 1; j >= 0; j--) {
+          newceilingverts.unshift(vertexlist[j].x, vertexlist[j].y, sector.ceilingheight);
         }
       }
 
@@ -353,7 +403,7 @@ if (restrictsectors && restrictsectors.indexOf(i) == -1) continue;
         texturegroups[sector.floorpic] = floor;
         sector.addFloorVertices(floorverts);
       }
-      if (hasceiling) {
+      if (this.showceilings && hasceiling) {
         var ceiling = map.getTextureGroup(sector.ceilingpic);
         var ceilingverts = ceiling.add(newceilingverts, sectorfaces, sector);
         texturegroups[sector.ceilingpic] = ceiling;
@@ -373,10 +423,13 @@ if (restrictsectors && restrictsectors.indexOf(i) == -1) continue;
       geo.computeVertexNormals();
 
       var mat = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(-Math.PI/2, 0, 0));
-      geo.applyMatrix(mat);
+      geo.applyMatrix4(mat);
 
       var texture = null;
       if (textures[k.toLowerCase()]) {
+        if (!textures[k.toLowerCase()].canvas) {
+          textures[k.toLowerCase()].loadTexture(wad.getPalette(), wad.getPatches());
+        }
         texture = new THREE.Texture(textures[k.toLowerCase()].getPOT());
         if (texture.image) texture.needsUpdate = true;
         texture.wrapS = THREE.RepeatWrapping;
@@ -384,20 +437,28 @@ if (restrictsectors && restrictsectors.indexOf(i) == -1) continue;
         texture.minFilter = THREE.NearestFilter;
         texture.magFilter = THREE.NearestFilter;
       }
-      var mat = new THREE.MeshPhongMaterial({
+      var mat = new THREE.MeshPhysicalMaterial({
         color: 0xffffff,
         side: THREE.DoubleSide,
         roughness: 0.8,
+				specularIntensity: 0,
+				specularColor: new THREE.Color('black'),
         map: texture,
         transparent: (textures[k.toLowerCase()] ? textures[k.toLowerCase()].transparent : false),
-        vertexColors: THREE.VertexColors
+        vertexColors: THREE.VertexColors,
+        depthWrite: (this.depth_write === null ? true : this.depth_write),
+        depthTest: (this.depth_test === null ? true : this.depth_test),
+        name: k,
       });
       var mesh = new THREE.Mesh(geo, mat);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
+      mesh.renderOrder = this.renderorder;
+/*
       if (mat.transparent) {
         mesh.renderOrder = 999;
       }
+*/
       currentmap.add(mesh);
 
       //var collidermesh = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({color: 0xffff00, opacity: .2, transparent: true, side: THREE.DoubleSide}));
@@ -418,11 +479,13 @@ if (restrictsectors && restrictsectors.indexOf(i) == -1) continue;
 
       var currentsector = map.getSectorAt(spawnpoint.x, spawnpoint.y);
       var playerheight = currentsector.floorheight;
-      var newy = (playerheight * this.scale.y);
+      var newy = (playerheight * this.parent.scale.y);
 
-      room.spawnpoint.position.set(spawnpoint.x * this.scale.x, newy, -spawnpoint.y * this.scale.z);
+/*
+      room.spawnpoint.position.set(spawnpoint.x * this.parent.scale.x, newy, -spawnpoint.y * this.parent.scale.z);
       room.spawnpoint.quaternion.setFromEuler(new THREE.Euler(0, (spawnpoint.angle - 90) * THREE.Math.DEG2RAD, 0));
       player.reset_position();
+*/
     }
 
     this.objects['3d'].add(currentmap);
@@ -436,24 +499,33 @@ console.log('COLLIDER', collidermap);
     this.collider = collidermap;
     //this.collision_trigger = true;
 
+    currentmap.traverse(n => n.userData.thing = this._target);
+
     if (this.showthings) {
+      this.thingpool = this.createObject('objectpool', {
+      });
       this.createThings();
     }
-    this.startMusic();
+    //this.startMusic();
 
     if (this.showdebug) {
-      this.enableDebug();
+      this.enableDebug(true);
     }
 
-
+    this.dispatchEvent({type: 'mapload'});
     this.refresh();
   },
-  enableDebug() {
+  enableDebug(showAllSectors=false) {
     if (!this.debug) {
-      this.debug = this.createObject('doomdebugger', {doomplayer: this.doomplayer});
+      this.debug = this.createObject('doomdebugger', {doomplayer: this.doomplayer, showallsectors: showAllSectors});
     } else {
       this.debug.reset();
       this.appendChild(this.debug);
+    }
+  },
+  disableDebug() {
+    if (this.debug) {
+      this.removeChild(this.debug);
     }
   },
   getSectorShapes(map) {
@@ -461,6 +533,10 @@ console.log('COLLIDER', collidermap);
     let shapes = [];
     for (var i = 0; i < sectormap.length; i++) {
       let linedefs = sectormap[i];
+      if (!linedefs) {
+        console.warn('Missing linedef ' + i, linedefs, map);
+        continue;
+      }
       let sectorverts = [];
       let edges = {};
       // Sort vertices into a sequential path around the perimeter
@@ -524,6 +600,10 @@ f++;
   getContainedSectors(sector, sectorshapes) {
     let contained = [];
     for (let i = 0; i < sectorshapes.length; i++) {
+      if (!sectorshapes[i]) {
+        console.warn('Sector shape ' + i + ' is empty', sectorshapes, sector);
+        continue;
+      }
       if (this.sectorContainsShape(sector, sectorshapes[i].vertexlist)) {
         let vertexlist = sectorshapes[i].vertexlist.slice(0);
         contained.push(vertexlist);
@@ -667,6 +747,7 @@ f++;
   createThings: function() {
     //this.statemachine = new DoomStateManager();
     var things = this.mapdata.things;
+console.log('got tons of things', things);
     //this.things = [];
     for (var i = 0; i < things.length; i++) {
       var thingprops = things[i];
@@ -696,22 +777,33 @@ f++;
 
   startMusic: function() {
     var soundname = 'd_e' + this.mapnum[0] + 'm' + this.mapnum[1];
+    this.stopMusic();
+
     room.loadNewAsset('sound', {
       id: soundname,
       src: this.musicpath + soundname + '.ogg',
     });
-    this.music = this.createObject('sound', {
-      id: soundname,
-      loop: true,
-      rect: '-100 -100 100 100',
-      gain: .2
-    });
-    this.music.play();
+    if (this.music) {
+      this.music.id = soundname;
+      //this.music.play();
+    } else {
+      this.music = this.createObject('sound', {
+        id: soundname,
+        loop: true,
+        rect: '-100 -100 100 100',
+        gain: .2
+      });
+      this.music.play();
+    }
   },
   stopMusic: function() {
-    this.music.stop();
-    this.music.rect = '9999 9999 10000 1000'; 
-    this.removeChild(this.music);
+console.log('stop lebvel music', this.music);
+    if (this.music) {
+      //this.music.die();
+      this.music.stop();
+      this.music.rect = '9999 9999 10000 1000'; 
+      //this.removeChild(this.music);
+    }
   },
 
   setSectorCeilingHeight(sectorid, height) {
@@ -812,6 +904,7 @@ f++;
       geometries[geo.uuid] = geo;
       for (var i = 0; i < sector.ceilingvertices.length; i++) {
         var vert = sector.ceilingvertices[i];
+        // FIXME - need to flip ceiling face normals
         geo.attributes.position.array[vert * 3 + 1] = sector.ceilingheight;
       }
     }
@@ -978,8 +1071,9 @@ f++;
     }
   },
   playSound(name, volume, position, velocity) {
-    if (this.wadfile.sounds[name]) {
-      let sound = this.wadfile.sounds[name];
+    if (!this.wads.sounds) this.wads.getSounds();
+    if (this.wads.sounds[name]) {
+      let sound = this.wads.sounds[name];
       let audio = player.ears.children[0].context;
       var buffer = audio.createBuffer(1, sound.samples, sound.rate);
       buffer.getChannelData(0).set(sound.pcm);
@@ -988,7 +1082,10 @@ f++;
       source.buffer = buffer;
       if (position) {
         let output = audio.createPanner();
-        output.position = position.toArray();
+        output.positionX.value = position.x;
+        output.positionY.value = position.y;
+        output.positionZ.value = position.z;
+console.log('MY POSITION', output.positionX, output.positionY, output.positionZ, output);
         source.connect(output);
         output.connect(audio.destination);
       } else {
@@ -1003,6 +1100,148 @@ f++;
       this.light.pos = translate(V(player.pos.x, player.pos.y + 1.6, player.pos.z), V(Math.sin(now / 1000), 0, Math.cos(now / 1000)));
     }
   },
+});
+room.registerElement('doomtransition', {
+  colwidth: 2,
+  speed: .03,
+  maxdev: .4,
+  maxdiff: .05,
+
+  create() {
+    this.createGeometry();
+    this.reset();
+    //this.startTransition();
+  },
+  createGeometry() {
+    let composer = this.engine.systems.render.views.main.composer;
+    let renderTarget = composer.renderTarget1;
+
+    let geo = new THREE.BufferGeometry();
+    let columns = Math.floor(renderTarget.width / this.colwidth);
+    this.columns = columns;
+
+    let pos = new Float32Array(6 * columns * 3),
+        uvs = new Float32Array(6 * columns * 2);
+
+    for (let i = 0; i < columns; i++) {
+      let uvoffset = i * 6 * 2,
+          posoffset = i * 6 * 3;
+      // bottom left
+      pos[posoffset] = i  / columns;
+      pos[posoffset + 1] = 0;
+      uvs[uvoffset] = i  / columns;
+      uvs[uvoffset + 1] = 0;
+      // bottom right
+      pos[posoffset + 3] = (i + 1)  / columns;
+      pos[posoffset + 4] = 0;
+      uvs[uvoffset + 2] = (i + 1) / columns;
+      uvs[uvoffset + 3] = 0;
+      // top left
+      pos[posoffset + 6] = i / columns;
+      pos[posoffset + 7] = 1;
+      uvs[uvoffset + 4] = i / columns;
+      uvs[uvoffset + 5] = 1;
+
+      // top left
+      pos[posoffset + 9] = i / columns;
+      pos[posoffset + 10] = 1;
+      uvs[uvoffset + 6] = i  / columns;
+      uvs[uvoffset + 7] = 1;
+      // bottom right
+      pos[posoffset + 12] = (i + 1)  / columns;
+      pos[posoffset + 13] = 0;
+      uvs[uvoffset + 8] = (i + 1) / columns;
+      uvs[uvoffset + 9] = 0;
+      // top right
+      pos[posoffset + 15] = (i + 1)  / columns;
+      pos[posoffset + 16] = 1;
+      uvs[uvoffset + 10] = (i + 1) / columns;
+      uvs[uvoffset + 11] = 1;
+    }
+    
+
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+
+    this.loadNewAsset('object', { id: 'fadestrips', object: new THREE.Mesh(geo) });
+    this.createObject('object', { id: 'fadestrips', image_id: 'oldscreen', cull_face: 'none', scale: V(1), lighting: false, depth_test: false, renderorder: 100,})
+
+    this.stripgeo = geo;
+    
+  },
+  reset() {
+    this.updateTexture();
+    this.resetStrips();
+  },
+  updateTexture() {
+    // save current screen to texture
+    let composer = this.engine.systems.render.views.main.composer;
+    let renderTarget = this.renderTarget,
+        renderTarget2 = this.renderTarget2;
+    if (!renderTarget) {
+      renderTarget = this.renderTarget = composer.renderTarget1.clone();
+      renderTarget2 = this.renderTarget2 = composer.renderTarget1.clone();
+      this.copypass = new THREE.ShaderPass(THREE.CopyShader);
+      this.gammapass = new THREE.ShaderPass(THREE.GammaCorrectionShader);
+      this.loadNewAsset('image', { id: 'oldscreen', texture: renderTarget.texture, hasalpha: true, });
+    }
+    this.copypass.render(composer.renderer, renderTarget, composer.readBuffer, 0, false);
+  },
+  resetStrips() {
+    // Map texture to geometry made up of vertical strips
+    // Assign a random negative start time to each strip, so we can animate them falling at constant speed but with different offsets
+    this.columntimes = [];
+    let ct = this.columntimes;
+    for (let i = 0; i < this.columns; i++) {
+      //this.columntimes[i] = -Math.random() / 2;
+      if (i == 0) {
+        ct[i] = -Math.random() * this.maxdev;
+      } else {
+        ct[i] = Math.min(0, Math.max(-this.maxdev, ct[i - 1] + (Math.random() * this.maxdiff) - this.maxdiff / 2));
+      }
+    }
+  },
+  begin() {
+    this.active = true;
+  },
+  update(dt) {
+    if (this.active) {
+      if (!this.stripgeo) return;
+
+      let geo = this.stripgeo,
+          pos = geo.attributes.position.array,
+          uvs = geo.attributes.uv.array;
+
+      let ct = this.columntimes;
+
+      let alldone = true;
+      // Animate the top positions and bottom uv map values for each strip to simulate melting
+      for (let i = 0; i < this.columns; i++) {
+        let uvoffset = i * 6 * 2,
+            posoffset = i * 6 * 3;
+
+        let y = Math.min(1, Math.max(0, ct[i]));
+
+        pos[posoffset + 7] = 1 - y
+        pos[posoffset + 10] = 1 - y;
+        pos[posoffset + 16] = 1 - y;
+
+        uvs[uvoffset + 1] = y;
+        uvs[uvoffset + 3] = y;
+        uvs[uvoffset + 9] = y;
+
+        ct[i] += this.speed;
+        alldone = (alldone && y == 1);
+      }
+      geo.attributes.position.needsUpdate = true;
+      geo.attributes.uv.needsUpdate = true;
+      this.active = !alldone;
+
+      if (alldone) {
+        console.log('it finished!');
+      }
+    }
+  }
 });
 
 room.registerElement('doomplayer', {
@@ -1056,7 +1295,7 @@ console.log('PLAYER', this.parent);
       visible: false
     });
 console.log('player sprite', this.sprite);
-    this.parent.things.push(this.sprite);
+    //this.parent.things.push(this.sprite);
 
   },
 
@@ -1070,7 +1309,9 @@ console.log('player sprite', this.sprite);
     if (!this.hud) {
       this.getHUD();
     }
-    if (!this.rockets) {
+    if (this.rockets) {
+      this.rockets.forEach(rocket => rocket.die());
+    }
       let rocketname = player.getUsername() + '_rocket_';
       this.rockets = [
         this.parent.createObject('doomthing_Missile', { pos: V(0,-9999,0), map: { wad: this.wad }, level: level, autosync: true, js_id: rocketname + '1'}),
@@ -1082,13 +1323,16 @@ console.log('player sprite', this.sprite);
       ];
       for (let i = 0; i < this.rockets.length; i++) {
         level.things.push(this.rockets[i]);
+        this.rockets[i].level = level;
       }
+/*
     } else {
       for (let i = 0; i < this.rockets.length; i++) {
         level.appendChild(this.rockets[i]);
         this.rockets[i].level = level;
       }
     }
+*/
   },
   getAutomap: function() {
     if (!this.automap) {
@@ -1127,7 +1371,7 @@ console.log(intersections);
           if (linedef.type == 11) {
   //console.log('no, it\'s an exit', this);
             var digits = [this.level.mapnum[0], this.level.mapnum[1] + 1];
-            if (this.level.wadfile.version == 'doom1') {
+            if (this.wad.iwad.version == 'doom1') {
               mapname = 'E' + digits[0] + 'M' + digits[1];
             } else {
               mapname = 'MAP' + digits[0] + digits[1];
@@ -1146,8 +1390,8 @@ console.log(intersections);
         }
       }
       if (!handled) {
-        //this.level.playSound('DSOOF');
-        this.level.createObject('sound', { id: 'DSOOF', gain: 1, singleshot: true});
+        this.level.playSound('DSOOF');
+        //this.level.createObject('sound', { id: 'DSOOF', gain: 1, singleshot: true});
       }
     }
     return handled;
@@ -1186,13 +1430,13 @@ console.log('go door go', linedef, params);
 console.log('current height is', sector.ceilingheight, newheight. minheight);
         if (params.subtype == 'open' || params.subtype == 'open_wait_close') {
           this.level.raiseSectorCeilingTo(sector.id, newheight - 4, 40);
-          //this.parent.playSound('DSDOROPN');
-          this.level.createObject('sound', { id: 'DSDOROPN', pos: middle, gain: 1, singleshot: true});
+          this.parent.playSound('DSDOROPN');
+          //this.level.createObject('sound', { id: 'DSDOROPN', pos: middle, gain: 1, singleshot: true});
           if (params.subtype == 'open_wait_close') {
             setTimeout(() => {
               this.level.lowerSectorCeilingTo(sector.id, sector.floorheight, 40);
-              //this.parent.playSound('DSDORCLS');
-              this.level.createObject('sound', { id: 'DSDORCLS', pos: middle, gain: 1, singleshot: true});
+              this.parent.playSound('DSDORCLS');
+              //this.level.createObject('sound', { id: 'DSDORCLS', pos: middle, gain: 1, singleshot: true});
             }, params.delay + 2000);
           }
         } else if (params.subtype == 'close' || params.subtype == 'close_wait_open') {
@@ -1209,8 +1453,8 @@ console.log('current height is', sector.ceilingheight, newheight. minheight);
         let newheight = sector.findHighestFloorSurrounding();
         if (params.subtype == 'lowest_neighbor_ceiling') {
           this.level.lowerSectorFloorTo(sector.id, newheight + params.offset, 40);
-          //this.parent.playSound('DSDOROPN');
-          this.level.createObject('sound', { id: 'DSPSTART', pos: middle, gain: 1, singleshot: true});
+          this.parent.playSound('DSDOROPN');
+          //this.level.createObject('sound', { id: 'DSPSTART', pos: middle, gain: 1, singleshot: true});
           setTimeout(() => {
             this.level.createObject('sound', { id: 'DSPSTOP', pos: middle, gain: 1, singleshot: true});
           }, params.delay + 2000);
@@ -1315,7 +1559,7 @@ console.log('current height is', sector.ceilingheight, newheight. minheight);
     var digits = level.split('');
 
     var mapname;
-    if (this.level.wadfile.version == 'doom1') {
+    if (this.wad.iwad.version == 'doom1') {
       mapname = 'E' + digits[0] + 'M' + digits[1];
     } else {
       mapname = 'MAP' + digits[0] + digits[1];
@@ -1332,6 +1576,7 @@ console.log('current height is', sector.ceilingheight, newheight. minheight);
   onupdate: function(ev) {
     var dt = ev.data;
 
+return;
     if (!this.level) return;
     var playerdir = this.level.worldToLocal(this._tmpvec.set(player.dir.x, 0, player.dir.z).normalize()).normalize();
     var playerangle = Math.atan2(playerdir.z, playerdir.x);
@@ -1343,21 +1588,23 @@ console.log('current height is', sector.ceilingheight, newheight. minheight);
 
     if (!this.noclip && this.map) {
       var playerpos = this.level.worldToLocal(this._tmpvec.set(player.pos.x, -player.pos.z, player.pos.y));
+
 playerpos.x = Math.round(playerpos.x);
 playerpos.y = Math.round(playerpos.y);
 playerpos.z = Math.round(playerpos.z);
+
       //var playervel = this.level.worldToLocal(V(player.vel.x, -player.vel.z, player.vel.y)).multiplyScalar(dt).add(scalarMultiply(this.level.worldToLocal(normalized(V(player.vel.x, -player.vel.z, player.vel.y))), .5));
       let nextpos = this.level.worldToLocal(this._tmpvec2.set(player.vel.x, -player.vel.z, player.vel.y).multiplyScalar(dt)).add(playerpos);
       playervel = nextpos.clone().sub(playerpos); // allocation
+//console.log('dt', dt, playerpos, playervel, nextpos);
       
       var map = this.map;
       // Handle wall collisions
       var speed = playervel.length();
-      if (speed > 1e-5) {
+      if (speed > 1e-10) {
         let intersections = map.getSphereIntersections(new WadJS.Vertex(playerpos.x, playerpos.y), playervel, this.radius); // allocation
+        let touching = false;
         if (intersections.length > 0) {
-          //console.log('boing!', intersections);
-
           let intersection = intersections[0],
               seg = intersection[0],
               linedef = map.getLinedef(seg.linedef),
@@ -1373,6 +1620,8 @@ playerpos.z = Math.round(playerpos.z);
 
           //console.log(currentsector, othersector, side0, side1);
           if (!othersector || ((othersector.floorheight - playerpos.z > 24 || othersector.ceilingheight - playerpos.z - this.height < 0) && currentside.middletex != '-')) {
+            touching = true;
+            console.log('boing!', intersections, playervel, playerpos, nextpos);
             // A wall is considered solid if:
             //  - there's nothing on the other side
             //  - the floor of the sector we're moving into is > 24 units high
@@ -1386,7 +1635,7 @@ playerpos.z = Math.round(playerpos.z);
 
 //player.moveForce.force.set(0,0,0);
             // FIXME - need to calculate proper reflection force here, and push back against the player as long as they're in contact with the wall
-            //this.wallforce.update(scalarMultiply(player.moveForce.force, -dot));
+            this.wallforce.update(scalarMultiply(player.moveForce.force, -dot));
 //console.log('new wallforce', this.wallforce.force, player.moveForce.force);
             player.vel = translate(player.vel, scalarMultiply(normal, -dot * speed)); // allocation
 playerpos.x = intersection[1].x;
@@ -1396,6 +1645,9 @@ playerpos.z = -intersection[1].y;
             player.pos.z = playerworldpos.z;
 
           }
+        }
+        if (!touching) {
+          this.wallforce.update(V(0,0,0));
         }
       }
       this.pos = this.level.worldToLocal(V(player.pos)); // allocation
@@ -1506,6 +1758,7 @@ room.registerElement('doomthing_Generic', {
   hanging: false,
   hitpoints: 0,
   maxdist: 20,
+  skipbillboard: false,
 
   textures: {},
 
@@ -1523,7 +1776,7 @@ room.registerElement('doomthing_Generic', {
         this.collision_trigger = true;
         this.collidable = false;
       }
-      this.addEventListener('physics_collide', (ev) => console.log(this, ev));
+      //this.addEventListener('physics_collide', (ev) => console.log(this, ev));
     }
 
   },
@@ -1539,11 +1792,11 @@ room.registerElement('doomthing_Generic', {
       this.plane = this.createObject('Object', {
         id: 'plane',
         //scale: V(this.sprite.canvas.width,this.sprite.canvas.height,1),
-        billboard: 'y',
+        billboard: (this.skipbillboard ? false : 'y'),
         pos: V(0,28,0),
         //image_id: this.sprite.id,
         tex_linear: true,
-        cull_face: 'none',
+        //cull_face: 'none',
         pickable: false,
         collidable: false,
         texture_offset: V(0),
@@ -2525,11 +2778,14 @@ room.extendElement('doomthing_Generic', 'doomthing_Missile', {
     this.spriteframe = 'A';
     this.currentframe = 0;
     this.draw(true);
-    this.createObject('sound', { id: 'DSRLAUNC', pos: V(0), gain: 1, singleshot: true});
+    //this.createObject('sound', { id: 'DSRLAUNC', pos: V(0), gain: 1, singleshot: true});
+    this.level.playSound('DSRLAUNC', 100, this.level.localToWorld(pos.clone()));
+console.log(this.level.localToWorld(this.localToWorld(V(0,0,-.1))), this.level.localToWorld(this.pos.clone()), this);
   },
 
   onupdate() {
 //console.log(this.sprite.getAngleToViewer(player.pos), this.zdir, this.xdir, this.ydir);
+//console.log('up', this.getWorldPosition());
     this.draw(true);
     if (this.active) {
       let hits = this.raycast();
@@ -2556,8 +2812,8 @@ this.currentframe = 0;
     //this.active = false;
     this.light.light_intensity = 16;
     this.light.col = V(.5,0,0);
-    //this.level.playSound('DSBAREXP', 100, this.getWorldPosition());
-    room.createObject('sound', { pos: this.getWorldPosition(), id: 'DSBAREXP', auto_play: true, gain: 1, singleshot: true });
+    this.level.playSound('DSBAREXP', 100, this.getWorldPosition());
+    //room.createObject('sound', { pos: this.getWorldPosition(), id: 'DSBAREXP', auto_play: true, gain: 1, singleshot: true });
     this.pickable = false;
 
     let shootables = [],
@@ -2658,7 +2914,7 @@ this.draw(true);
       this.defineAttributes({
         name: {type: 'string'},
       });
-      let wad = room.objects['doomlevel'].wadfile;
+      let wad = room.objects['doomlevel'].wads;
       let texture = wad.getTexture(this.name);
 
       if (texture.canvas) {
@@ -2668,6 +2924,7 @@ this.draw(true);
   });
   room.registerElement('doomdebugger', {
     doomplayer: null,
+    showallsectors: false,
     create() {
       this.sectors = {};
       this.cursor = this.createObject('object', {
@@ -2696,6 +2953,9 @@ this.draw(true);
       });
       this.debugwindow.setcontent('');
       this.debugelements = elation.elements.fromTemplate('doomdebugger', this.debugwindow.content);
+      if (this.showallsectors) {
+        this.debugAllSectors();
+      }
     },
     reset() {
       for (let k in this.sectors) {
@@ -2703,6 +2963,9 @@ this.draw(true);
           this.removeChild(this.sectors[k]);
         }
         delete this.sectors[k];
+      }
+      if (this.showallsectors) {
+        this.debugAllSectors();
       }
     },
     update() {
@@ -2808,30 +3071,48 @@ if (this.wireframe_linedef) {
     setSector(sector) {
       for (let k in this.sectors) {
         if (this.sectors[k] && this.sectors[k] !== sector && this.sectors[k].parent === this) {
-          this.removeChild(this.sectors[k]);
+          //this.removeChild(this.sectors[k]);
         }
       }
-/*
-      if (this.currentsector && this.sectors[this.currentsector.id]) {
-        this.sectors[this.currentsector.id].hide();
+
+      if (!this.showallsectors) {
+        if (this.currentsector && this.sectors[this.currentsector.id]) {
+          this.sectors[this.currentsector.id].hide();
+        }
+      } else {
+        if (!this.sectors[sector.id]) {
+          this.sectors[sector.id] = this.createObject('doomdebugger_sector', {
+            map: this.doomplayer.map,
+            level: this.doomplayer.level,
+            sector: sector,
+            lighting: false,
+            fog: false,
+            js_id: 'doomdebugger_sector_' + this.doomplayer.level.map + '_' + sector.id,
+            //pos: this.worldToLocal(V(player.cursor_pos)),
+          });
+        } else {
+          //this.sectors[sector.id].pos = this.worldToLocal(V(player.cursor_pos));
+          this.appendChild(this.sectors[sector.id]);
+        }
       }
-*/
       this.currentsector = sector;
-      if (!this.sectors[sector.id]) {
+
+      //this.debugwindow.setcontent('<h1>Sector ' + sector.id + '</h1>');
+    },
+    debugAllSectors() {
+      console.log('ALL SECTORS', this.doomplayer.map.sectors);
+      for (let i = 0; i < this.doomplayer.map.sectors.length; i++) {
+        let sector = this.doomplayer.map.sectors[i];
         this.sectors[sector.id] = this.createObject('doomdebugger_sector', {
           map: this.doomplayer.map,
           level: this.doomplayer.level,
           sector: sector,
           lighting: false,
+          fog: false,
           js_id: 'doomdebugger_sector_' + this.doomplayer.level.map + '_' + sector.id,
           //pos: this.worldToLocal(V(player.cursor_pos)),
         });
-      } else {
-        //this.sectors[sector.id].pos = this.worldToLocal(V(player.cursor_pos));
-        this.appendChild(this.sectors[sector.id]);
       }
-
-      //this.debugwindow.setcontent('<h1>Sector ' + sector.id + '</h1>');
     }
   });
 
@@ -2846,6 +3127,7 @@ if (this.wireframe_linedef) {
           sectormap = map.getSectorMap(),
           linedefs = sectormap[sector.id];
 
+      if (!linedefs) return;
       let linedefpoints = [],
           linedefcolors = [],
           linedefmeta = [],
@@ -2910,12 +3192,15 @@ if (this.wireframe_linedef) {
         colors: linedefcolors,
         depth_test: false,
         depth_write: true,
-        opacity: .25,
+        opacity: .4,
         //scale: V(1000)
         pickable: false,
         collidable: false,
-        linewidth: 5,
+        linewidth: 2,
+        renderorder: 10,
+        fog: false,
       });
+/*
       this.wireframe_clipped = this.createObject('linesegments', {
         positions: linedefpoints,
         colors: linedefcolors,
@@ -2925,8 +3210,10 @@ if (this.wireframe_linedef) {
         opacity: 1,
         //scale: V(1000)
         linewidth: 2,
+        fog: false,
       });
-
+*/
+/*
       this.bleh = this.createObject('object', {
         id: 'cube',
         pos: centerpoint,
@@ -2949,6 +3236,7 @@ if (this.wireframe_linedef) {
         //scale: V(200),
         pos: centerpoint
       });
+*/
     },
     show() {
       this.visible = true;
@@ -2966,6 +3254,125 @@ if (this.wireframe_linedef) {
           side2 = this.map.getSidedef(linedef.side2),
           sector1 = (side1 ? this.map.getSector(side1.sector) : null),
           sector2 = (side2 ? this.map.getSector(side2.sector) : null);
+
+      
+      if (linedef.side2 != 65535 && !(linedef.flags & 0x0020)) {
+        //if (linedef.type) {
+        //if (sector1.floorheight == sector2.ceilingheight || sector2.floorheight == sector2.ceilingheight || sector1.tag || sector2.tag) {
+        if (sector1.floorheight == sector2.floorheight && sector1.ceilingheight != sector2.ceilingheight) {
+          color = '#ffff00'; // door (yellow)
+        } else if (sector1.floorheight == sector2.floorheight) {
+          color = '#cccccc'; // two-sided wall (brown)
+        } else {
+          color = '#aa8262'; // two-sided wall (brown)
+        }
+      }
+      return V().fromArray(new THREE.Color(color).toArray());
+    }
+  });
+  room.registerElement('doomdebugger_wireframe', {
+    map: null,
+    level: null,
+    depth_test: true,
+    create() {
+      let map = this.map,
+          geom = map.getGeometry(),
+          sectormap = map.getSectorMap();
+      let linedefpoints = [],
+          linedefcolors = [],
+          linedefmeta = [];
+      for (let sectorid = 0; sectorid < map.sectors.length; sectorid++) {
+        let sector = map.sectors[sectorid],
+            linedefs = sectormap[sector.id];
+        let verts = {};
+        if (!linedefs) continue;
+        for (let i = 0; i < linedefs.length; i++) {
+          let linedef = linedefs[i],
+              v1 = map.getVertex(linedef.v1),
+              v2 = map.getVertex(linedef.v2);
+
+          let linedefcolor = this.getLinedefColor(linedef);
+
+          verts[linedef.v1] = v1;
+          verts[linedef.v2] = v2;
+
+          let floor1 = V(v1.x, sector.floorheight, -v1.y),
+              floor2 = V(v2.x, sector.floorheight, -v2.y),
+              ceil1 = V(v1.x, sector.ceilingheight, -v1.y),
+              ceil2 = V(v2.x, sector.ceilingheight, -v2.y);
+
+          let floormid = floor1.clone().add(floor2).multiplyScalar(.5),
+              dir = floor1.clone().sub(floor2).normalize(),
+              floortick = floormid.clone();
+
+          let side1 = map.getSidedef(linedef.side1);
+          if (side1.sector == sector.id) {
+            floortick.add(dir.cross(V(0,1,0)).multiplyScalar(-5));
+          } else {
+            floortick.add(dir.cross(V(0,1,0)).multiplyScalar(5));
+          }
+
+          let ceilmid = floormid.clone(),
+              ceiltick = floortick.clone();
+          ceilmid.y = ceiltick.y = sector.ceilingheight;
+
+          linedefpoints.push(floor1, floor2);
+          linedefpoints.push(floormid, floortick);
+          linedefpoints.push(ceil1, ceil2);
+          linedefpoints.push(ceilmid, ceiltick);
+
+          linedefcolors.push(linedefcolor, linedefcolor, linedefcolor, linedefcolor, linedefcolor, linedefcolor, linedefcolor, linedefcolor);
+          linedefmeta.push(linedef, linedef, linedef, linedef, linedef, linedef, linedef, linedef);
+        }
+
+        let vertpoints = [];
+        let centerpoint = V();
+        for (let k in verts) {
+          let v = verts[k],
+              floor = V(v.x, sector.floorheight, -v.y),
+              ceil = V(v.x, sector.ceilingheight, -v.y);
+          vertpoints.push(floor);
+          vertpoints.push(ceil);
+
+          linedefpoints.push(floor, ceil);
+          linedefcolors.push(V(.3), V(.3));
+          linedefmeta.push(null, null);
+          centerpoint.add(floor);
+        }
+        centerpoint.divideScalar(vertpoints.length);
+      }
+      this.wireframe_dimmed = this.createObject('linesegments', {
+        positions: linedefpoints,
+        colors: linedefcolors,
+        depth_test: this.depth_test,
+        depth_write: true,
+        opacity: .15,
+        transparent: this.transparent,
+        //scale: V(1000)
+        pickable: false,
+        collidable: false,
+        linewidth: 1,
+        fog: false,
+        renderorder: this.renderorder,
+      });
+    },
+    show() {
+      this.visible = true;
+      this.collidable = true;
+      this.pickable = true;
+    },
+    hide() {
+      this.visible = false;
+      this.collidable = false;
+      this.pickable = false;
+    },
+    getLinedefColor(linedef) {
+      var color = '#fb0101'; // default red, solid one-sided wall
+      var map = this.map,
+          side1 = map.getSidedef(linedef.side1),
+          side2 = map.getSidedef(linedef.side2),
+          sector1 = (side1 ? map.getSector(side1.sector) : null),
+          sector2 = (side2 ? map.getSector(side2.sector) : null);
 
       
       if (linedef.side2 != 65535 && !(linedef.flags & 0x0020)) {
