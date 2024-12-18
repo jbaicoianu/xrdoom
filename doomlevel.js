@@ -29,7 +29,7 @@ room.registerElement('doomlevel', {
 
     this.initializeThings();
 
-    this.transition = player.createObject('doomtransition', { pos: V(-1.05, 0.7, -1), scale: V(2.1, 1.5, 1) }); // FIXME - should center based on screen resolution, etc
+    this.transition = player.createObject('doomtransition');
 
     this.wads = new WadJS.WadGroup();
     this.loadWads();
@@ -1187,6 +1187,11 @@ room.registerElement('doomtransition', {
       this.loadNewAsset('image', { id: 'oldscreen', texture: renderTarget.texture, hasalpha: true, });
     }
     this.copypass.render(composer.renderer, renderTarget, composer.readBuffer, 0, false);
+
+    let aspect = renderTarget.width / renderTarget.height;
+    let distance = 0.5 / Math.tan(player.camera.camera.fov * 0.5 * (Math.PI / 180));
+    this.pos = player.head.localToWorld(V(aspect / 2, -.5, distance));
+    this.scale = V(aspect, 1, 1);
   },
   resetStrips() {
     // Map texture to geometry made up of vertical strips
@@ -1206,6 +1211,11 @@ room.registerElement('doomtransition', {
     this.active = true;
   },
   update(dt) {
+    let composer = this.engine.systems.render.views.main.composer;
+    if (this.renderTarget && composer.renderTarget1.width != this.renderTarget.width || composer.renderTarget1.height != this.renderTarget.height) {
+      this.renderTarget.setSize(composer.renderTarget1.width, composer.renderTarget1.height);
+      this.renderTarget2.setSize(composer.renderTarget1.width, composer.renderTarget1.height);
+    }
     if (this.active) {
       if (!this.stripgeo) return;
 
