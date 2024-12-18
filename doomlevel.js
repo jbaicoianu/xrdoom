@@ -1,3 +1,4 @@
+THREE.VertexColors = true; // legacy
 const settings = {
   thinglights: true,
   thinglightshadows: false,
