@@ -1,0 +1,43 @@
+<html>
+  <head>
+    <link rel="stylesheet" href="browser.css"></link>
+    <meta name="viewport" content="width=device-width, initial-scale=0.5, maximum-scale=0.5">
+      <title>DoomScroll: Doom WAD Explorer</title>
+    <meta name="twitter:card" content="player"></meta>
+    <meta name="twitter:site" content="@bai0"></meta>
+    <meta name="twitter:title" content="DoomScroll"></meta>
+    <meta name="twitter:description" content="Doom WAD Explorer"></meta>
+    <meta name="twitter:player" content="https://baicoianu.com/~bai/doom/doomscroll.html"></meta>
+    <meta name="twitter:player:width" content="1024"></meta>
+    <meta name="twitter:player:height" content="768"></meta>
+    <meta name="twitter:image" content="https://baicoianu.com/~bai/doom/doomscroll.png"></meta>
+  </head>
+  <body>
+  <janus-viewer uiconfig="ui/doomui.json">
+    <assets>
+      <assetscript src="doomscroll.js" />
+      <assetscript src="doomlevel.js" />
+      <assetimage id="doomscroll" src="doomscroll.png" hasalpha="true" />
+      <assetfont id="doomfont" src="DooM_Regular.json" />
+    </assets>
+    <room cursor_visible="false" skybox_equi="black" pointerlock="false" private="true" require="snaplayout objectpool layout-template">
+      <doom-scroll rotation="0 180 0" pos="0 0 2" js_id="doomscroll" />
+
+      <layout-template name="hologram" transition-time="300" transition-easing="linear">
+        <layout-master>
+          <layout-slot slotname="title" pos="-1 2 0" scale="2 2 2">
+            <object id="foo" />
+          </layout-slot>
+          <layout-slot slotname="hologram" pos="4 0 .5" />
+        </layout-master>
+        <layout-alternate name="expanded">
+          <layout-slot slotname="title" pos="0 1 0" scale="1 1 1" />
+          <layout-slot slotname="hologram" pos="1 0 .5" />
+        </layout-alternate>
+      </layout-template>
+
+    </room>
+  </janus-viewer>
+    <script src="https://web.janusxr.org/janusweb.js"></script>
+  </body>
+</html>
