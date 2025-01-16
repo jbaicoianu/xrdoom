@@ -1,0 +1,19 @@
+{
+  "includes": [
+    "https://baicoianu.com/~bai/janusweb/build/media/assets/webui/default.json"
+  ],
+  "templates": {
+    "janusweb.ui": "./doomui.html",
+    "doom.assets.viewer": "./doom-asset-viewer.html"
+  },
+  "css": [
+    "./doom.css"
+  ],
+  "scripts": [
+    "./doom.js"
+  ],
+  "components": [
+    "doom-hud",
+    "doom-automap"
+  ]
+}

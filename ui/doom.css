@@ -1,0 +1,155 @@
+@font-face {
+  font-family: "Doom";
+  src: url("DooM.ttf");
+}
+
+body {
+  overflow: hidden;
+}
+.doom-automap-window>.ui_window_content {
+  display: flex;
+  overflow: hidden;
+}
+doom-automap {
+  cursor: -webkit-grab;
+  cursor: -moz-grab;
+  cursor: -ms-grab;
+  cursor: grab;
+  flex: 1 1;
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+  object-fit: fill;
+  height: 100%;
+}
+doom-automap[dragging] {
+  cursor: -webkit-grabbing;
+  cursor: -moz-grabbing;
+  cursor: -ms-grabbing;
+  cursor: grabbing;
+}
+
+.doom-asset-window>.ui_window_content {
+  display: flex;
+}
+.doom-asset-window ui-tab {
+  max-width: 60em;
+  max-height: 30em;
+  overflow-y: auto;
+}
+doom-assets-textures {
+  flex: 1 1;
+  max-height: 800px;
+  vertical-align: top;
+}
+doom-assets-texture,
+doom-assets-patch,
+doom-assets-sprite,
+doom-assets-sound {
+  width: 128px;
+  height: calc(132px + 1.2em);
+  margin: 2px;
+  display: inline-block;
+  text-align: center;
+  border: 1px solid #777;
+  vertical-align: top;
+  border-radius: 4px;
+  background: rgba(0,0,0,.5);
+  transition: transform 100ms ease-out;
+}
+doom-assets-texture:hover,
+doom-assets-patch:hover,
+doom-assets-sprite:hover,
+doom-assets-sound:hover {
+  transform: scale(1.1);
+  box-shadow: 0 0 10px rgba(0,255,0,1);
+}
+doom-assets-texture ui-text,
+doom-assets-patch ui-text,
+doom-assets-sprite ui-text,
+doom-assets-sound ui-text {
+  display: block;
+  border-bottom: 1px solid #333;
+  background: rgba(0,255,0,.1);
+  color: white;
+  text-shadow: 0 0 2px rgba(0,0,0,1);
+}
+doom-assets-texture ui-flexpanel,
+doom-assets-patch ui-flexpanel,
+doom-assets-sprite ui-flexpanel,
+doom-assets-sounds ui-flexpanel {
+  flex: 1 1;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+}
+doom-assets-texture .texture_canvas,
+doom-assets-patch .texture_canvas,
+doom-assets-sprite .texture_canvas {
+  display: flex;
+  align-items: center;
+}
+doom-assets-texture canvas,
+doom-assets-patch canvas,
+doom-assets-sprite canvas {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+
+}
+doom-assets-sprite canvas {
+  align-self: flex-end;
+}
+doom-assets-sound ui-button {
+  font-size: 3em;
+  padding: 0;
+  margin: .5em;
+  text-align: center;
+  vertical-align: middle;
+  border-radius: 10px;
+  line-height: 80px;
+  height: 80px;
+  width: 80px;
+}
+doom-assets-viewer ui-window>.ui_window_content {
+  overflow: hidden;
+  display: flex;
+}
+doom-assets-viewer ui-window ui-window-content>ui-tabs {
+  display: flex;
+  flex: 1;
+}
+doom-assets-viewer ui-window ui-window-content>ui-tabs>ui-tabbar {
+  flex: 0;
+}
+doom-assets-viewer ui-window ui-window-content>ui-tabs>ui-tab {
+  flex: 1;
+  overflow: auto;
+}
+.debuggergrid {
+  display: grid;
+  grid-template-columns: 200px 200px;
+}
+.debuggergrid ul {
+  list-style: none;
+}
+doom-debugger-map,
+doom-debugger-sector,
+doom-debugger-linedef {
+  font-family: monospace;
+  padding: .5em;
+}
+doom-debugger-sector h3 {
+  clear: right;
+}
+doom-debugger-texture-preview {
+  display: block;
+  float: right;
+}
+doom-debugger-sector {
+  grid-column: 1;
+  grid-row: 1 / 3;
+}

@@ -578,6 +578,32 @@ elation.elements.define('doom.assets.patches', class extends elation.elements.do
     }
   }
 });
+elation.elements.define('doom.assets.hud', class extends elation.elements.doom.base {
+  init() {
+    super.init();
+    this.defineAttributes({
+      wad: { type: 'object' }
+    });
+  }
+  onelementconnect() {
+    if (!this.texturelist) {
+      var wad = this.getWad();
+      var textures = wad.getHUDImages();
+
+      var texturelist = [];
+      for (var k in textures) {
+        var tex = textures[k];
+        tex.title = tex.name + ' (' + tex.width + 'x' + tex.height + ')';
+        texturelist.push(tex);
+      }
+      this.texturelist = elation.elements.create('ui-grid', {
+        append: this,
+        items: texturelist,
+        itemcomponent: 'doom.assets.patch',
+      });
+    }
+  }
+});
 elation.elements.define('doom.assets.patch', class extends elation.elements.ui.item {
   init() {
     super.init();
