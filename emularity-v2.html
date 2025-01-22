@@ -1,0 +1,75 @@
+<html>
+  <head>
+    <title>Doom</title>
+
+    <meta charset="utf-8">
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no, maximum-scale=1.0, width=device-width" />
+
+    <script src="https://baicoianu.com/~bai/emularity-v2/node_modules/browserfs/dist/browserfs.js"></script>
+    <script type="module" src="https://baicoianu.com/~bai/emularity-v2/src/emularity.js"></script>
+
+    <link rel="stylesheet" href="https://baicoianu.com/~bai/emularity-v2/css/emularity.css">
+  </head>
+  <body bgcolor="black">
+    <script>
+      function initCustomWad(emu) {
+        let urlargs = new URLSearchParams(document.location.search),
+            wadname = urlargs.get('wadname'),
+            wadurl = urlargs.get('wadurl'),
+            warp = urlargs.get('warp');
+        if (wadname && wadurl) {
+          let wadfile = document.createElement('emularity-file');
+          wadfile.setAttribute('url', wadurl);
+          wadfile.path = `/${wadname}.wad`;
+          emu.addFile(wadfile.path, wadfile);
+          emu.addArgument('-file', `/emulator/${wadname}.wad`);
+          if (warp) {
+            let w = warp.split(' ');
+            if (w.length > 0) {
+              emu.addArgument('-warp');
+              emu.addArgument(w[0]);
+            }
+            if (w.length > 1) {
+              emu.addArgument(w[1]);
+            }
+          }
+        }
+      }
+    </script>
+    <emularity-emulator wasmroot="wasm" wasmscript="/chocolate-doom.js" splashlogo="https://baicoianu.com/~bai/emularity-v2/logos/emularity-transparent.png" arguments="-iwad /emulator/doom.wad -window -width 1600 -height 1200 -config /emulator/doom.cfg -extraconfig /emulator/chocolate-doom.cfg" onclick="this.canvas.requestPointerLock(); event.stopPropagation(); event.preventDefault();" oncreate="initCustomWad(this)">
+      <emularity-file path="/doom.wad" url="DOOM.WAD"></emularity-file>
+      <emularity-file path="/doom.cfg" encoding="msdos">
+mouse_sensitivity             9
+key_right                     77
+key_left                      75
+key_up                        17
+key_down                      31
+key_strafeleft                30
+key_straferight               32
+use_mouse                     1
+mouseb_fire                   0
+mouseb_strafe                 1
+mouseb_forward                2
+mouseb_speed                  -1
+screenblocks                  10
+snd_channels                  32
+
+      </emularity-file>
+      <emularity-file path="/chocolate-doom.cfg" encoding="msdos">
+novert                        1
+startup_delay                 0
+mouseb_prevweapon             4
+mouseb_nextweapon             3
+      </emularity-file>
+    </emularity-emulator>
+<style type="text/css">
+.emularity-emulator canvas {
+  width: 100%;
+  max-width: none;
+  max-height: 100vh;
+}
+</style>
+  </body>
+</html>
+
+
