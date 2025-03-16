@@ -1,13 +1,13 @@
 import("https://baicoianu.com/~bai/doom/doomclient.js").then(() => {
 room.registerElement('doom-scroll', {
   create() {
-      document.fonts.load('10px Doom').then(() => {
-        if (room.pendingCustomElements == 0) {
-          this.loadWAD();
-        } else {
-          elation.events.add(room, 'room_load_complete_customelements', ev => this.loadWAD());
-        }
-      });
+    document.fonts.load('10px Doom').then(() => {
+      if (room.pendingCustomElements == 0) {
+        this.loadWAD();
+      } else {
+        elation.events.add(room, 'room_load_complete_customelements', ev => this.loadWAD());
+      }
+    });
   },
   async loadWAD() {
     this.iwad = new WadJS.WadGroup();
@@ -35,13 +35,14 @@ room.registerElement('doom-scroll', {
       endpoint: 'doom_levels_metadata_fixed.json',
     });
     this.list = this.createObject('doom-scroll-list', {
-      collection: this.collection
+      collection: this.collection,
+      pos: V(.5, 0, -3.15),
     });
     this.logo = this.list.createObject('object', {
       id: 'plane',
       image_id: 'doomscroll',
       scale: V(4, 1, 1),
-      pos: V(0, 1, -3.15)
+      pos: V(0, 1, 0)
     })
     this.infobox = this.createObject('doom-scroll-infobox', {
       pos: V(0,1.75,.3),
@@ -95,7 +96,7 @@ console.log('did tex', name, tex);
       for (let i = 0; i < this.collection.items.length; i++) {
         let item = this.collection.items[i];
         if (item.name == levelname) {
-          let listitem = this.createObject('doom-scroll-item');
+          let listitem = this.createObject('doom-scroll-item', { pos: V(0,0,-2000), scale: V(.01), iwad: this.iwad});
           listitem.setData(item);
           this.infobox.show(listitem);
           break;
@@ -106,6 +107,16 @@ console.log('did tex', name, tex);
   hideInfo() {
     this.infobox.hide();
   },
+  updateDistance() {
+    let layoutwidth = (window.screen.orientation.angle == 90 ? 0 : 0);
+    let distance = layoutwidth / Math.tan(player.camera.camera.fov * player.camera.camera.aspect * 0.5 * (Math.PI / 180));
+    //this.list.pos.z = -3.15 + -distance;
+    //this.logo.pos.z = -distance;
+    player.pos.z = -distance;
+  },
+  update() {
+    this.updateDistance();
+  }
 });
 room.registerElement('doom-scroll-infobox', {
   iwad: null,
@@ -123,8 +134,8 @@ room.registerElement('doom-scroll-infobox', {
     this.content = this.layout.createObject('object');
     this.backdrop = this.content.createObject('object', { id: 'plane', image_id: 'skinmet1', collision_id: 'cube', collidable: false, scale: V(3,2,1), collision_scale: V(1,1,.01)});
     this.shelf = this.content.createObject('object', { id: 'cube', image_id: 'support3', collision_id: 'cube', collidable: false, scale: V(.4,.1,3), rotation: V(0, 90, 0), pos: V(0, -1.05, .2), texture_repeat: V(.333, 2)});
-    this.close = this.layout.createObject('object', { id: 'cube', image_id: 'sw1exit', scale: V(.1, .1, .01), pos: V(1.4, 0.9, .02), texture_repeat: V(.2812, .11111), texture_offset: V(.375, .4444), collision_id: 'cube', collidable: false, });
-    this.close.addEventListener('click', ev => this.layout.unsnap());
+    this.closebutton = this.layout.createObject('object', { id: 'cube', image_id: 'sw1exit', scale: V(.1, .1, .01), pos: V(1.4, 0.9, .02), texture_repeat: V(.2812, .11111), texture_offset: V(.375, .4444), collision_id: 'cube', collidable: false, });
+    this.closebutton.addEventListener('click', ev => this.hide());
     //this.cover = this.content.createObject('object', { id: 'plane', col: 'black', collision_id: 'cube', collidable: false, scale: V(2.6,1.5,.02), pos: V(0,-.005,.125), cull_face: 'none', visible: false, depth_test: true, depth_write: false, renderorder: -10,});
 
     // draw solid map, depth write and test enabled
@@ -176,7 +187,7 @@ console.log('updated websurface', this.websurface);
           lines = this.textcache.split('\n').length;
         }
 
-        let lineend = (lines * 20) - 960;
+        let lineend = (lines * 22);// - 960;
 
         this.scrollpos = Math.max(0, Math.min(lineend, this.scrollpos + ev.deltaY));
         if (this.scrolltimer) {
@@ -402,7 +413,6 @@ console.log('items', items, map);
     this.stats.text = stattext;
   },
   show(item) {
-console.log('AHHHHH', item);
     if (item) this.setItem(item);
     this.layout.snap();
   },
@@ -415,7 +425,6 @@ console.log('AHHHHH', item);
   async getLevelPreviews(wads) {
     let { wad, pwad} = wads;
     let maps = pwad.getMapNames().sort();
-    console.log('my maps!', maps);
     let x = -1;
 
     this.holograms = [];
@@ -466,6 +475,7 @@ room.registerElement('doom-scroll-list', {
   create() {
     this.mass = 1;
     this.friction = this.addForce('friction', 10);
+/*
     window.addEventListener('wheel', ev => { 
 console.log('wheely', ev);
       let amount = ev.deltaY / 10;
@@ -474,6 +484,14 @@ console.log('wheely', ev);
         this.handleScroll();
       }
     });
+*/
+    window.addEventListener('touchstart', ev => {
+      if (!this.touchInitialized) {
+        this.initializeTouchScrolling();
+      }
+    });
+
+    this.initializeTouchScrolling();
 
     let scrollrepeat = false;
 
@@ -600,7 +618,7 @@ console.log('wheely', ev);
         map: { wad: this.parent.iwad },
         js_id: player.getUsername() + '_avatar_sprite',
         scale: V(.0328),
-        pos: V(side * 6, -i * 4 - 1, -4.5),
+        pos: V(side * 4.5, -i * 4 - 1, -4.5),
         rotation: (side == -1 ? V(0,-125,0) : V(0,125,0)),
         pickable: false,
         collidable: false,
@@ -620,13 +638,13 @@ console.log('wheely', ev);
       this.lastframe = this.frametime;
     }
     let fudge = .1;
-    let currow = Math.floor((this.pos.y * this.itemmargin * fudge) - 5);
+    let currow = Math.floor((this.pos.y * this.itemmargin * fudge) - 2);
 
     if (currow != this.lastrow || this.lastcount != this.collection.items.length) {
 //console.log('I scrolled', currow, this.pos.y, this.columns);
       this.lastrow = currow;
       this.lastcount = this.collection.items.length;
-      this.updateItems(currow, currow + 8);
+      this.updateItems(currow, currow + 5);
     }
   },
   updateItems(startrow, endrow) {
@@ -639,20 +657,35 @@ console.log('wheely', ev);
           y = Math.floor(i / this.columns);
       //let obj2 = this.createObject('object', { id: 'plane', image_id: 'gray4', pos: V(-3 + (1.2 * x), 1.2 * y - 1, -3.15), texture_repeat: "1 .5", collision_id: 'plane'});
       //let item = this.createObject('doom-scroll-item', { x: x, y: y, z: -3.15 });
-      let item = this.itempool.grab({
-        x: x,
-        y: y,
-        z: -3.15,
-        margin: this.itemmargin,
-        pickable: false,
-        collidable: false,
-      });
+      let item = this.itempool.find({data: items[i]});;
+      if (!item) {
+        item = this.itempool.grab({
+          x: x,
+          y: y,
+          z: 0,
+          margin: this.itemmargin,
+          pickable: false,
+          collidable: false,
+          iwad: this.parent.iwad,
+        });
+        item.setData(items[i]);
+      }
       //item.addEventListener('itemselect', ev => this.dispatchEvent(item));
-      if (!item.parent) this.appendChild(item);
-      item.setData(items[i]);
+      if (!item.parent || item.parent !== this) this.appendChild(item);
       item.setXY(x, y);
 //console.log('new item', item, item.parent);
     }
+  },
+  initializeTouchScrolling() {
+    this.touchInitialized = true;
+    document.body.style.overflowY = 'auto';
+    document.body.style.height = '1000000px';
+    janus.engine.client.style.position = 'fixed';
+    window.addEventListener('scroll', ev => this.handleTouchScroll(ev));
+  },
+  handleTouchScroll(ev) {
+    this.pos.y = document.body.scrollTop / 200;
+    this.vel.y = 0;
   },
   handleScroll() {
   },
@@ -706,14 +739,21 @@ room.registerElement('doom-scroll-item', {
   z: 0,
   margin: 1.2,
   data: null,
+  iwad: null,
 
   create() {
     this.setXY(this.x, this.y);
     this.backdrop = this.createObject('object', { id: 'plane', image_id: 'flat5_4', texture_repeat: "1 .5", collision_id: 'plane', static: false, pickable: true, collidable: false, scale: V(5, 2.5, 1), pos: V(2.5, 0, 0), texture_repeat: V(5,2.5) });
-    this.backdrop.addEventListener('click', ev => this.select());
+    this.backdrop.addEventListener('click', ev => { ev.preventDefault(); this.select(); });
     //this.backdrop.addEventListener('mouseover', ev => this.scale = V(1.1));
     //this.backdrop.addEventListener('mouseout', ev => this.scale = V(1));
 
+    this.mapholder = this.createObject('doom-scroll-map-hologram-preview', { pos: V(.74, .54, 0.021), scale: V(1.25) });
+    this.mapcontainer = this.createObject('object', { pos: V(0, .2, .5), scale: V(.0005), rotation: V(45, 0, 0) });
+    this.mapcontainer2 = this.mapcontainer.createObject('object', { rotate_deg_per_sec: 10 });
+
+    //this.mappreview.setMap(this.mapcontainer);
+    this.mapcount = this.createObject('text', { text: '', pos: V(1.325, -.025, .025), font_scale: false, font_size: .1, align: 'right', thickness: 0 });
   },
   generateThumb() {
     let thumbass = this.getThumbAsset();
@@ -802,7 +842,6 @@ room.registerElement('doom-scroll-item', {
         lines[curline] += word + ' ';
       });
 
-      //lines.forEach((line, linenum) => {
       for (let linenum = 0; linenum < 5; linenum++) {
         if (linenum > lines.length - 1) break;
         let line = lines[linenum];
@@ -831,16 +870,59 @@ room.registerElement('doom-scroll-item', {
     if (!this.thumb) {
       //this.thumb = this.createObject('object', { id: 'plane', image_id: thumbid, scale: V(1.8), pos: V(1,.2,.02), static: false, pickable: false, collidable: false,});
       this.thumb = this.createObject('object', { id: 'plane', image_id: thumbid, scale: V(5, 2.5, 1), pos: V(2.5,0,.02), static: false, pickable: false, collidable: false, transparent: true});
+      //this.thumbimg = this.createObject('object', { id: 'plane', col: 'blue', image_id: 'https://xrdoom.com/wads/doom/morgana/morgana-E1M1.gif', scale: V(1.25, 1.25, 1), pos: V(.73,.53,.025), static: false, pickable: false, collidable: false, transparent: true});
+      let firstlevel = data.levels[0];
     } else if (thumbid != this.thumb.image_id) {
       this.thumb.image_id = thumbid;
     }
-  }
+    let imgsrc = `https://xrdoom.com/wads/doom/${data.name}/${data.name}-${data.levels[0]}.gif`;
+    if (!this.thumbimg || this.id != imgsrc) {
+      if (this.thumbimg)  this.thumbimg.die();
+      //this.thumbimg = this.createObject('image', { id: imgsrc, scale: V(0.6, 0.6, .01), pos: V(.76,.49,.025), static: false, pickable: false, collidable: false, transparent: true, lighting: false});
+    }
+
+    if (this.mappreview) {
+      this.mappreview.parent.removeChild(this.mappreview);
+      this.mappreview.die();
+      this.mappreview = false;
+    }
+    this.loadMap(this.data.url);
+  },
+  async getPWAD(wadurl) {
+    let wad = new WadJS.WadGroup();
+    wad.iwad = this.iwad.iwad;
+    let pwad = await wad.load(wadurl);
+    return {wad, pwad};
+  },
+  async loadMap(wadurl, mapname) {
+    let wads = await this.getPWAD(wadurl);
+    let mapnames = wads.pwad.getMapNames().sort();
+    let map = wads.wad.getMap(mapnames[0]);
+    //this.hologram = this.container.createObject('doom-scroll-map-hologram', { map: map, wads: wads, level: mapname, item: this.item, rotatespeed: 0, showthings: false, });
+    //hologram.toggleThings(false);
+    if (this.mappreview) {
+      this.mappreview.parent.removeChild(this.mappreview);
+      this.mappreview.die();
+      this.mappreview = false;
+    }
+    this.mappreview = this.mapcontainer2.createObject('doomdebugger_wireframe', { pos: V(0, .2, 0), map: map, depth_test: true, renderorder: 4, transparent: true });
+    this.mapholder.setMap(this.mappreview, mapnames.length);
+    if (mapnames.length > 1) {
+      this.mapcount.text = '+' + (mapnames.length - 1) + ' more';
+      this.mapcount.visible = true;
+    } else {
+      this.mapcount.visible = false;
+      this.mapcount.text = '';
+    }
+  },
 });
 room.registerElement('doom-scroll-map-hologram', {
   wads: null,
   map: null,
   level: null,
   item: null,
+  showthings: true,
+  rotatespeed: 20,
 
   create() {
     //this.base = this.createObject('object', { id: 'cylinder', scale: V(.2, .02, .2), col: V(.2),  metalness: 0, roughness: .2, });
@@ -887,7 +969,7 @@ room.registerElement('doom-scroll-map-hologram', {
     this.controls = controlslot.createObject('doom-scroll-map-hologram-controls');
 
     let scale = .00005;
-    this.container = holoslot.createObject('object', { rotate_deg_per_sec: 20, pos: V(0,0,0), scale: V(scale) });
+    this.container = holoslot.createObject('object', { rotate_deg_per_sec: this.rotatespeed, pos: V(0,0,0), scale: V(scale) });
     this.container2 = this.container.createObject('object');
     let dragcollider = colliderslot.createObject('object', { collision_id: 'cube', scale: V(1.5, .75, .01), xid: 'cube', col: 'blue', opacity: .2 });
     //let fuck = colliderslot.createObject('object', { scale: V(15, 5, 0.1), id: 'cube', col: 'green', opacity: .2, depth_test: false, depth_write: true, renderorder: -1, pos: V(0, 0, -10), depth_func: 'always', js_id: 'fuck' });
@@ -901,6 +983,9 @@ room.registerElement('doom-scroll-map-hologram', {
     this.mapitems.pickable = true;
     this.mapitems.addEventListener('mouseover', ev => { console.log('this item', ev); });
     this.updateMapItems(this.map);
+    if (!this.showthings) {
+      this.mapwireframe.removeChild(this.mapitems);
+    }
 
     this.recenter(-.5);
 
@@ -909,7 +994,6 @@ room.registerElement('doom-scroll-map-hologram', {
     this.controls.addEventListener('exportmap', ev => this.exportMap());
     this.controls.addEventListener('playmap', ev => this.playMap());
     
-console.log('my map geoms!', geoms);
 /*
 setTimeout(() => {
     let geom = wireframe.wireframe_dimmed.objects['3d'].children[0].geometry;
@@ -1087,6 +1171,7 @@ console.log('my wireframe!', wireframe, this);
     let zoom = (ev.deltaY > 0 ? .9 : 1.1);
     this.container.scale.multiplyScalar(zoom);
     ev.stopPropagation();
+    ev.preventDefault();
   },
   expand(throwevent=true) {
     if (!this.expanded) {
@@ -1111,7 +1196,6 @@ console.log('my wireframe!', wireframe, this);
       if (this.dragtype == 'pan') {
         //this.container2.pos.add(this.container.objects.dynamics.worldToLocalDir(V(diff[0], diff[1], 0).multiplyScalar(10)));
         let rot = this.container.rotation.radians.y;
-console.log(this.container.rotation.radians);
         //this.container2.pos.add(V(diff[0], 0, diff[1]).applyAxisAngle(V(0,1,0), -rot).multiplyScalar(-10));
         // FIXME - this still gets weird in one quadrant
         this.container2.pos.add(V(diff[0] * Math.cos(rot) + diff[1] * Math.sin(rot), 0, diff[1] * Math.cos(rot) + diff[0] * Math.sin(rot)).multiplyScalar(-10));
@@ -1150,7 +1234,7 @@ console.log('toggle textures', on, this.levelpreview);
         this.levelpreview = this.container2.createObject('doomlevel-map', {
           wads: this.wads.wad,
           map: this.map,
-          showceilings: true,
+          showceilings: false,
           depth_test: false,
           depth_write: true,
           pickable: false,
@@ -1204,7 +1288,6 @@ console.log('my clone', clone.position, clone);
     }, 250);
   },
   playMap() {
-    console.log('play map', this);
     let wad = this.item.data;
     let m = this.level.match(/^E(\d)M(\d)$/);
     let warp = '1 1';
@@ -1216,7 +1299,7 @@ console.log('my clone', clone.position, clone);
         warp = m[1];
       }
     }
-    window.open('emularity.html?wadname=' + encodeURIComponent(wad.name) + '&wadurl=' + encodeURIComponent(wad.url) + '&warp=' + encodeURIComponent(warp));
+    window.open('emularity-v2.html?wadname=' + encodeURIComponent(wad.name) + '&wadurl=' + encodeURIComponent(wad.url) + '&warp=' + encodeURIComponent(warp));
   },
   saveAsGif(frames=15, length=1000) {
     console.log('eoeoeo', this);
@@ -1323,6 +1406,78 @@ room.registerElement('doom-scroll-toggle', {
     ev.preventDefault();
   },
 });
+room.registerElement('doom-scroll-map-hologram-preview', {
+  create() {
+    this.rendertarget = new THREE.WebGLRenderTarget( 256, 256, {
+      minFilter: THREE.LinearMipmapLinearFilter,
+      magFilter: THREE.LinearFilter,
+    });
+
+    this.loadNewAsset('image', { id: 'mapview', texture: this.rendertarget.texture });
+
+    this.plane = this.createObject('object', {
+      id: 'plane',
+      col: 'white',
+      lighting: false,
+      image_id: 'mapview',
+    });
+    //this.thinger = this.createObject('object', { id: 'cube', col: 'blue', lighting: false, pos: V(0, 0, -4), cull_face: 'none', scale: V(1), angular: V(10, 25, 0) });
+    this.scene = new THREE.Scene();
+    //this.scene.add(this.thinger.objects['3d']);
+    //this.scene.background = new THREE.Color(0xff0000);
+    //this.camera = new THREE.PerspectiveCamera();
+    this.camera = new THREE.OrthographicCamera();
+    this.scene.add(this.camera);
+
+    this.mapcontainer = this.createObject('object', { pos: V(0, 0, -5), scale: V(.0005), rotation: V(90, 0, 0) });
+    this.mapcontainer2 = this.mapcontainer.createObject('object', { rotate_deg_per_sec: -10 });
+    this.scene.add(this.mapcontainer.objects['3d']);
+  },
+  setMap(map) {
+    if (this.map) {
+      this.mapcontainer2.removeChild(this.map);
+    }
+    this.map = map;
+    this.mapcontainer2.appendChild(this.map);
+    this.recenter();
+  },
+  recenter() {
+    let map = this.map.map;
+    let min = [Infinity, Infinity],
+        max = [-Infinity, -Infinity];
+    map.vertexes.forEach(v => {
+      if (v.x < min[0]) min[0] = v.x;
+      if (v.x > max[0]) max[0] = v.x;
+      if (v.y < min[1]) min[1] = v.y;
+      if (v.y > max[1]) max[1] = v.y;
+    });
+
+    let center = [(max[0] + min[0]) / 2, (max[1] + min[1]) / 2];
+    this.map.pos.x = -center[0];
+    this.map.pos.z = center[1];
+
+    let size = Math.sqrt(Math.pow(Math.max(Math.abs(min[0]), Math.abs(max[0])), 2) + Math.pow(Math.max(Math.abs(min[1]), Math.abs(max[1])), 2)) * .0005 * .8;
+
+    if (this.camera instanceof THREE.OrthographicCamera) {
+      this.camera.left = -size;
+      this.camera.right = size;
+      this.camera.bottom = -size;
+      this.camera.top = size;
+      this.camera.updateProjectionMatrix();
+    } else {
+      // TODO - fit perspective camera to map
+    }
+  },
+  update(dt) {
+    if (this.scene && this.rendertarget) {
+      let renderer = this.engine.systems.render.renderer;
+      let rt = renderer.getRenderTarget();
+      renderer.setRenderTarget(this.rendertarget);
+      renderer.render(this.scene, this.camera);
+      renderer.setRenderTarget(rt);
+    }
+  }
+});
 room.registerElement('doom-scroll-button', {
   label: '',
   create() {
@@ -1365,4 +1520,180 @@ room.registerElement('doom-scroll-button', {
     ev.preventDefault();
   },
 });
+});
+room.registerElement('doom-scroll-minimap', {
+  create() {
+    document.fonts.load('10px Doom').then(() => {
+      if (room.pendingCustomElements == 0) {
+        this.loadWAD();
+      } else {
+        elation.events.add(room, 'room_load_complete_customelements', ev => this.loadWAD());
+      }
+    });
+    this.container = this.createObject('object', { rotation: V(45, 0, 0), pos: V(0, 1.5, -1), scale: V(5) });
+  },
+  async loadWAD() {
+    this.iwad = new WadJS.WadGroup();
+    await this.iwad.load('DOOM.WAD');
+
+  },
+  async getPWAD(wadurl) {
+    let wad = new WadJS.WadGroup();
+    wad.iwad = this.iwad.iwad;
+    let pwad = await wad.load(wadurl);
+    return {wad, pwad};
+  },
+  async loadMap(wadurl, mapname) {
+    let wads = await this.getPWAD(wadurl);
+    let map = wads.wad.getMap(mapname);
+    this.hologram = this.container.createObject('doom-scroll-map-hologram', { map: map, wads: wads, level: mapname, item: this.item, rotatespeed: 0, showthings: false, });
+    //hologram.toggleThings(false);
+    return this.hologram;
+  },
+  async sleep(n) {
+    return new Promise(resolve => setTimeout(resolve, n));
+  },
+  async recordGIF(wadurl, mapname) {
+    if (this.hologram) this.hologram.die();
+    try {
+      let hologram = await this.loadMap(wadurl, mapname);
+      if (!window.gifenc) {
+        window.gifenc = await import('https://unpkg.com/gifenc');
+      }
+      await this.sleep(100);
+      let steps = 18,
+      frames = [];
+      let gif = new gifenc.GIFEncoder();
+      let palette = false;
+      for (let i = 1; i < steps + 1; i++) {
+        //this.engine.client.view.render(1000/16);
+        await new Promise(resolve => requestAnimationFrame(() => {
+          hologram.rotation = V(0, i * (360 / steps), 0);
+          resolve();
+        }));
+        frames[i] = await this.engine.client.view.screenshotSingle({format: 'rgba'});
+
+        let frameopts = {delay: 150};
+        if (i == 1) {
+          palette = gifenc.quantize(frames[i], 16);
+          frameopts.palette = palette;
+          frameopts.first = true;
+          frameopts.delay = 0;
+        }
+        let indexedFrame = gifenc.applyPalette(frames[i], palette);
+        gif.writeFrame(indexedFrame, 128, 128, frameopts);
+      }
+      gif.finish();
+      let output = gif.bytes();
+
+      //this.uploadToS3(wadurl, mapname, output);
+      return output;
+    } catch (e) {
+      console.error('ERROR:', wadurl, mapname, e);
+      return false;
+    }
+  },
+  async processList(listurl) {
+    let res = await fetch(listurl),
+        j = await res.json();
+
+    AWS.config.update({
+        region: 'us-west-2', // e.g., 'us-west-2'
+        credentials: new AWS.Credentials(JSON.parse(localStorage['aws-credentials'])),
+    });
+
+    let successes = [],
+        failures = [];
+
+    let pending = 0;
+    for (let i = 0; i < j.length; i++) {
+      let m = j[i];
+      if (m.levels.length == 0) {
+        failures.push({success: false, wadname: m.name, mapname: 'UNKNOWN' } );
+        continue;
+      }
+      let levelname = m.levels[0].toUpperCase();
+      let gifdata = await this.recordGIF(m.url, levelname);
+      pending++;
+      if (gifdata) {
+        this.uploadToS3(m.url, m.name, levelname, gifdata).then(response => {
+          if (response.success) {
+            successes.push(response);
+          } else {
+            failures.push(response);
+          }
+          pending--;
+        });
+      } else {
+        failures.push({success: false, wadname: m.name, mapname: levelname } );
+        pending--;
+      }
+    }
+
+    let f = async (resolve) => {
+      if (pending > 0) {
+        setTimeout(f, 100, resolve);
+        return false;
+      }
+      resolve();
+    }
+    await new Promise(resolve => { f(resolve) });
+
+    console.log('Done!', pending);
+    console.log(successes.length + ' succeeded', successes);
+    console.log(failures.length + ' failed', failures);
+  },
+  async uploadToS3(wadurl, wadname, mapname, gifdata) {
+    let parts = wadurl.split('/');
+    parts.pop();
+    parts.push(`${wadname}-${mapname}.gif`);
+    let gifurl = parts.join('/');
+    parts.shift();
+    parts.shift();
+    parts.shift();
+    let s3key = parts.join('/');
+    //console.log('upload', gifurl, s3key, gifdata);
+
+    let presignedUrl = await this.generatePresignedUrl(s3key, 'image/gif');
+    try {
+        // Use the Fetch API to upload the data to S3
+        const response = await fetch(presignedUrl, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'image/gif' // Set the correct MIME type
+            },
+            body: gifdata // Uint8Array as the body
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to upload data: ${response.statusText}`);
+        }
+
+        console.log('Data uploaded successfully!', s3key);
+        return {success: true, wadname, mapname, gifurl};
+    } catch (error) {
+        console.error('Error uploading data:', error);
+        return { success: false, wadname, mapname, error: error.msg };
+    }
+  },
+  async generatePresignedUrl(key, contentType) {
+    const s3 = new AWS.S3();
+    const params = {
+        Bucket: 'spispopd.lol',
+        Key: key,
+        Expires: 60, // URL expires in 60 seconds
+        ContentType: contentType
+    };
+
+    return new Promise((resolve, reject) => {
+        s3.getSignedUrl('putObject', params, (err, url) => {
+            if (err) {
+                reject(err);
+            } else {
+                resolve(url);
+            }
+        });
+    });
+  }
 });
