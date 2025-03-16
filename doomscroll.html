@@ -15,29 +15,40 @@
   <body>
   <janus-viewer uiconfig="ui/doomui.json">
     <assets>
-      <assetscript src="doomscroll.js" />
-      <assetscript src="doomlevel.js" />
-      <assetimage id="doomscroll" src="doomscroll.png" hasalpha="true" />
-      <assetfont id="doomfont" src="DooM_Regular.json" />
+      <assetscript src="doomscroll.js"></assetscript>
+      <assetscript src="doomlevel.js"></assetscript>
+      <assetimage id="doomscroll" src="doomscroll.png" hasalpha="true"></assetimage>
+      <assetfont id="doomfont" src="DooM_Regular.json"></assetfont>
     </assets>
-    <room cursor_visible="false" skybox_equi="black" pointerlock="false" private="true" require="snaplayout objectpool layout-template">
-      <doom-scroll rotation="0 180 0" pos="0 0 2" js_id="doomscroll" />
+    <room cursor_visible="false" skybox_equi="black" pointerlock="false" private="true" require="snaplayout objectpool layout-template" showavatar="false">
+      <doom-scroll rotation="0 180 0" pos="0 0 2" js_id="doomscroll"></doom-scroll>
 
       <layout-template name="hologram" transition-time="300" transition-easing="linear">
         <layout-master>
           <layout-slot slotname="title" pos="-1 2 0" scale="2 2 2">
-            <object id="foo" />
           </layout-slot>
-          <layout-slot slotname="hologram" pos="4 0 .5" />
+          <layout-slot slotname="hologram" pos="4 0 .5"></layout-slot>
         </layout-master>
         <layout-alternate name="expanded">
-          <layout-slot slotname="title" pos="0 1 0" scale="1 1 1" />
-          <layout-slot slotname="hologram" pos="1 0 .5" />
+          <layout-slot slotname="title" pos="0 1 0" scale="1 1 1"></layout-slot>
+          <layout-slot slotname="hologram" pos="1 0 .5"></layout-slot>
         </layout-alternate>
       </layout-template>
 
+      <layout-template name="infobox" transition-time="300" transition-easing="linear">
+        <layout-master>
+          <layout-slot name="wadinfo">
+          </layout-slot>
+          <layout-slot name="stats">
+            <paragraph pos="-.47 -1 .01" scale=".8 .75 1" collidable="false" pickable="false" back_alpha="0" renderorder="11" depth_write="false" lighting="false" /> 
+          </layout-slot>
+        </layout-master>
+      </layout-template>
+
     </room>
+<janus-overlay>
+</janus-overlay>
   </janus-viewer>
-    <script src="https://web.janusxr.org/janusweb.js"></script>
+    <script src="https://baicoianu.com/~bai/janusweb/build/janusweb.js"></script>
   </body>
 </html>
